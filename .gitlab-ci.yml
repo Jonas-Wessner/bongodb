@@ -6,6 +6,9 @@ stages:
 rust-latest:
   stage: build
   image: rust:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH
   script:
     - cargo build --verbose
     - cargo test --verbose
@@ -16,6 +19,9 @@ rust-latest:
 rust-nightly:
   stage: build
   image: rustlang/rust:nightly
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH
   script:
     - cargo build --verbose
     - cargo test --verbose
