@@ -30,3 +30,4 @@ rust-nightly:
     - cargo test --verbose --manifest-path bongo-server/Cargo.toml
     - cargo build --verbose --manifest-path bongo-lib/Cargo.toml
     - cargo test --verbose --manifest-path bongo-lib/Cargo.toml
+
