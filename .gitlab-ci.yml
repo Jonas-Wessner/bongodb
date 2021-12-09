@@ -11,10 +11,11 @@ rust-latest:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     # if merge request exists for this branch
     - if: $CI_MERGE_REQUEST_IID
-      when: manual
   script:
-    - cargo build --verbose
-    - cargo test --verbose
+    - cargo build --verbose --manifest-path bongo-server/Cargo.toml
+    - cargo test --verbose --manifest-path bongo-server/Cargo.toml
+    - cargo build --verbose --manifest-path bongo-lib/Cargo.toml
+    - cargo test --verbose --manifest-path bongo-lib/Cargo.toml
 
 rust-nightly:
   stage: build
@@ -24,7 +25,8 @@ rust-nightly:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     # if merge request exists for this branch
     - if: $CI_MERGE_REQUEST_IID
-      when: manual
   script:
-    - cargo build --verbose
-    - cargo test --verbose
+    - cargo build --verbose --manifest-path bongo-server/Cargo.toml
+    - cargo test --verbose --manifest-path bongo-server/Cargo.toml
+    - cargo build --verbose --manifest-path bongo-lib/Cargo.toml
+    - cargo test --verbose --manifest-path bongo-lib/Cargo.toml
