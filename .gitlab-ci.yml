@@ -7,9 +7,11 @@ rust-latest:
   stage: build
   image: rust:latest
   rules:
+    # if its a (merge-)commit on the main branch
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == $CI_DEFAULT_BRANCH
-  when: never
+    # if merge request exists for this branch
+    - if: $CI_MERGE_REQUEST_IID
+      when: manual
   script:
     - cargo build --verbose
     - cargo test --verbose
@@ -18,9 +20,11 @@ rust-nightly:
   stage: build
   image: rustlang/rust:nightly
   rules:
+    # if its a (merge-)commit on the main branch
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == $CI_DEFAULT_BRANCH
-  when: never
+    # if merge request exists for this branch
+    - if: $CI_MERGE_REQUEST_IID
+      when: manual
   script:
     - cargo build --verbose
     - cargo test --verbose
