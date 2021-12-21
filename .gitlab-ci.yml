@@ -1,0 +1,33 @@
+# template from https://doc.rust-lang.org/cargo/guide/continuous-integration.html
+
+stages:
+  - build
+
+rust-latest:
+  stage: build
+  image: rust:latest
+  rules:
+    # if its a (merge-)commit on the main branch
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    # if merge request exists for this branch
+    - if: $CI_MERGE_REQUEST_IID
+  script:
+    - cargo build --verbose --manifest-path bongo-server/Cargo.toml
+    - cargo test --verbose --manifest-path bongo-server/Cargo.toml
+    - cargo build --verbose --manifest-path bongo-lib/Cargo.toml
+    - cargo test --verbose --manifest-path bongo-lib/Cargo.toml
+
+rust-nightly:
+  stage: build
+  image: rustlang/rust:nightly
+  rules:
+    # if its a (merge-)commit on the main branch
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    # if merge request exists for this branch
+    - if: $CI_MERGE_REQUEST_IID
+  script:
+    - cargo build --verbose --manifest-path bongo-server/Cargo.toml
+    - cargo test --verbose --manifest-path bongo-server/Cargo.toml
+    - cargo build --verbose --manifest-path bongo-lib/Cargo.toml
+    - cargo test --verbose --manifest-path bongo-lib/Cargo.toml
+
