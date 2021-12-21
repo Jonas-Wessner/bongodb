@@ -45,12 +45,55 @@
     - hash tables with hash mapped to row
     - duplicate hashes result in linear search after binary search
     - file per table
-        
-        [https://www.youtube.com/watch?v=OyBwIjnQLtI](https://www.youtube.com/watch?v=OyBwIjnQLtI)
-        
-    
+
+      [https://www.youtube.com/watch?v=OyBwIjnQLtI](https://www.youtube.com/watch?v=OyBwIjnQLtI)
+
     tcp connected → new thread → wait for commands → parse sql → check for concurrent access → execute command → return result → send response with result → wait for new commands (back to step 3) → client exit thread
-    
+
+## Data format transmitted via tcp between server and client
+
+- data-format Client -> Server:
+  {
+  "sql": ""
+  }
+
+
+- data-format Server -> Client:
+- The Structure of the return data is implicitly known, because the client sends the select statement and therefore
+  knows which table shall be queried.
+- Only select returns an array of "data". Other statements return an empty array of "data"
+  For select statements:
+- As every transmitted information is encoded in json, the webserver knows, when a message is fully transmitted over tcp. Therefore another transmitting protocol like HTTP, which would cause too much overhead, can be omitted.
+
+```json
+  {
+  "success_code": ENUM_SUCCESS_CODE,
+  "data": [
+    [
+      1,
+      "Peter",
+      35,
+      175,
+      0
+    ],
+    [
+      2,
+      "Güther",
+      33,
+      180,
+      2000
+    ],
+    ...
+  ]
+}
+```
+
+ENUM_SUCCESS_CODE:
+
+- 0 -> Sucessful
+- 1 -> Error invalid statement
+- 2 -> error correct statement, but cannot be executed
+- possibly other codes
 
 # Database client library
 
