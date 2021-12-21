@@ -95,6 +95,54 @@ ENUM_SUCCESS_CODE:
 - 2 -> error correct statement, but cannot be executed
 - possibly other codes
 
+## Supported SQL statements:
+- Only simple inserts without default values:
+```sql
+INSERT INTO table_name (column_list)
+VALUES
+    (value_list_1),
+    (value_list_2),
+    ...
+    (value_list_n);
+```
+
+```sql
+UPDATE table_name
+SET column1 = value1, column2 = value2, ...
+WHERE condition; 
+```
+
+```sql
+DELETE FROM table_name WHERE condition;
+```
+
+```sql
+CREATE DATABASE testDB;
+```
+
+```sql
+CREATE TABLE table_name (
+                            column1 datatype,
+                            column2 datatype,
+                            column3 datatype,
+    ....
+); 
+```
+
+```sql
+DROP TABLE table_name; 
+```
+
+```sql
+DROP DATABASE databasename; 
+```
+
+### Major restrictions:
+
+- Where Conditions only with operators <, > = (especially no AND, OR operators)
+- No JOINs
+
+
 # Database client library
 
 - connect to webserver
