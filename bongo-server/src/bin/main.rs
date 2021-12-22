@@ -1,14 +1,17 @@
 use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write, BufWriter};
+use thread_pool::ThreadPool;
 
 fn main() {
     // TODO: do not use unwrap here
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
 
+    let pool = ThreadPool::new(5);
+
     for stream in listener.incoming() {
         // TODO: do not use unwrap here
         let stream = stream.unwrap();
-        handle_connection(stream);
+        pool.execute(|| { handle_connection(stream) });
     }
 }
 
@@ -20,7 +23,7 @@ fn handle_connection(mut stream: TcpStream) {
         String::from_utf8_lossy(&buffer[..])
     );
 
-    // bufwriter only useful when having multiple write calls
+    // BufWriter only useful when having multiple write calls
     let mut writer = BufWriter::new(stream);
 
     let response = "HTTP/1.1 200 OK\r\n\r\n";
