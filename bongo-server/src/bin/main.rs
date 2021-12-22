@@ -8,7 +8,8 @@ fn main() {
 
     let pool = ThreadPool::new(5);
 
-    for stream in listener.incoming() {
+    // process first 2 requests, then graceful shutdown should be triggered through the Drop trait
+    for stream in listener.incoming().take(2) {
         // TODO: do not use unwrap here
         let stream = stream.unwrap();
         pool.execute(|| { handle_connection(stream) });
