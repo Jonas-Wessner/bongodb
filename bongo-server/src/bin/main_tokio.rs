@@ -17,7 +17,11 @@ async fn main() {
             let mut buffer = Vec::with_capacity(256);
 
             loop {
+                // discard everything until the received starter '{'
+                reader.read_until(b'{', &mut buffer).await.unwrap();
+                buffer.clear();
                 let bytes_read = reader.read_until(b'}', &mut buffer).await.unwrap();
+                buffer.pop(); // discard last element which is '}'
 
                 if bytes_read == 0 {
                     break;
