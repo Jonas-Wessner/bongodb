@@ -11,3 +11,4 @@ path = "src/ThreadPool.rs"
 version = "0.1.0"
 
 [dependencies]
+tokio = { version = "1", features = ["full"] }
