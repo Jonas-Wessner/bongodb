@@ -1,7 +1,3 @@
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncWriteExt, BufReader, AsyncBufReadExt};
-use tokio::net::tcp::WriteHalf;
-
 mod webserver;
 
 use webserver::{Webserver, ClientToServerProto, Request};
@@ -12,8 +8,8 @@ async fn main() {
         "localhost:8080",
         ClientToServerProto::new(1024),
         |request: Request| {
-            println!("Hello World.");
-            return String::from("");
+            println!("request: '{}'", request.sql);
+            return request.sql;
         },
-    ).start();
+    ).start().await.unwrap();
 }
