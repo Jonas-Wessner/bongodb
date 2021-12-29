@@ -12,10 +12,8 @@ where T: Send{
 
 // safe to implement, because it only has read access to its fields
 unsafe impl<T: Send> Send for Webserver<T> {}
-
 unsafe impl<T: Send> Sync for Webserver<T> {}
 
-// safe to implement, because it only contains a method and therefore does not share mutable data
 pub struct Request {
     pub sql: String,
 }
