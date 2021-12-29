@@ -1,6 +1,8 @@
 mod webserver;
+mod request;
 
-use crate::bongo_server::webserver::{Webserver, BongoRequestParser, BongoRequest};
+use crate::bongo_server::webserver::{Webserver};
+use crate::bongo_server::request::{BongoRequestParser, BongoRequest};
 
 pub struct BongoServer {}
 
