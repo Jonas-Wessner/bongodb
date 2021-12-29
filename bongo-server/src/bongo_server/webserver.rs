@@ -3,25 +3,26 @@ use tokio::io::{self, BufReader, AsyncBufReadExt, AsyncWriteExt};
 use async_trait::async_trait;
 use std::sync::{Arc};
 
-pub struct Webserver<T>
-where T: Send{
+pub struct Webserver<Request>
+    where Request: Send {
     address: String,
-    protocol: Box<dyn RequestParser<T> + Send + Sync>,
-    handle_request: Box<dyn (Fn(T) -> String) +  Send + Sync>,
+    protocol: Box<dyn RequestParser<Request> + Send + Sync>,
+    handle_request: Box<dyn (Fn(Request) -> String) + Send + Sync>,
 }
 
 // safe to implement, because it only has read access to its fields
-unsafe impl<T: Send> Send for Webserver<T> {}
-unsafe impl<T: Send> Sync for Webserver<T> {}
+unsafe impl<Request: Send> Send for Webserver<Request> {}
 
-pub struct Request {
+unsafe impl<Request: Send> Sync for Webserver<Request> {}
+
+pub struct BongoRequest {
     pub sql: String,
 }
 
 #[async_trait]
-pub trait RequestParser<T>
-where T: Send {
-    async fn parse(&self, reader: &mut BufReader<ReadHalf>) -> Option<T>;
+pub trait RequestParser<Request>
+    where Request: Send {
+    async fn parse(&self, reader: &mut BufReader<ReadHalf>) -> Option<Request>;
 }
 
 pub struct BongoRequestParser {
@@ -38,8 +39,8 @@ impl BongoRequestParser {
 }
 
 #[async_trait]
-impl RequestParser<Request> for BongoRequestParser {
-    async fn parse(&self, reader: &mut BufReader<ReadHalf>) -> Option<Request> {
+impl RequestParser<BongoRequest> for BongoRequestParser {
+    async fn parse(&self, reader: &mut BufReader<ReadHalf>) -> Option<BongoRequest> {
         let mut buffer = Vec::with_capacity(self.buffer_allocator_size);
 
         let delimiters_front = "{\"sql\":\"".as_bytes();
@@ -78,7 +79,7 @@ impl RequestParser<Request> for BongoRequestParser {
             Err(_) => {}
         }
 
-        let request = Request {
+        let request = BongoRequest {
             sql: String::from_utf8(buffer).unwrap() // safe because our format does only contain ACII, wich requires only one UTF8 byte
         };
 
@@ -105,11 +106,11 @@ impl ReadUntilMultiple for BufReader<ReadHalf<'_>> {
 }
 
 
-impl<T: 'static + Send> Webserver<T> {
-    pub fn new<F, P>(address: &str, protocol: P, handle_request: F) -> Webserver<T>
-        where F: 'static + (Fn(T) -> String) + Send + Sync ,
-              P: 'static + RequestParser<T> + Send + Sync,
-              T: Send {
+impl<Request: 'static + Send> Webserver<Request> {
+    pub fn new<F, P>(address: &str, protocol: P, handle_request: F) -> Webserver<Request>
+        where F: 'static + (Fn(Request) -> String) + Send + Sync,
+              P: 'static + RequestParser<Request> + Send + Sync,
+              Request: Send {
         Self {
             address: String::from(address),
             protocol: Box::new(protocol),
@@ -117,10 +118,16 @@ impl<T: 'static + Send> Webserver<T> {
         }
     }
 
-    pub async fn start(self) -> io::Result<()> {
-        println!("BongoServer started on {}", self.address);
+    pub async fn start(self) -> String {
+        let listener;
 
-        let listener = TcpListener::bind(&self.address).await?;
+        match TcpListener::bind(&self.address).await {
+            Ok(contained_listener) => {
+                println!("BongoServer started on {}", &self.address);
+                listener = contained_listener;
+            }
+            Err(_) => { return String::from("Failed to bind to address `") + &self.address + "`"; }
+        }
 
         let caller = Arc::new(self);
 

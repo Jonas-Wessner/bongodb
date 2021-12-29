@@ -12,8 +12,9 @@ rust-latest:
     # if merge request exists for this branch
     - if: $CI_MERGE_REQUEST_IID
   script:
-    - cargo build --verbose --manifest-path bongo-server/Cargo.toml
-    - cargo test --verbose --manifest-path bongo-server/Cargo.toml
+#    bongo-server builds currently with nightly build channel
+#    - cargo build --verbose --manifest-path bongo-server/Cargo.toml
+#    - cargo test --verbose --manifest-path bongo-server/Cargo.toml
     - cargo build --verbose --manifest-path bongo-lib/Cargo.toml
     - cargo test --verbose --manifest-path bongo-lib/Cargo.toml
 
