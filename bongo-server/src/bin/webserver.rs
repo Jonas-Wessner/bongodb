@@ -6,7 +6,7 @@ use std::sync::{Arc};
 pub struct Webserver<T>
 where T: Send{
     address: String,
-    protocol: Box<dyn Protocol<T> + Send + Sync>,
+    protocol: Box<dyn RequestParser<T> + Send + Sync>,
     handle_request: Box<dyn (Fn(T) -> String) +  Send + Sync>,
 }
 
@@ -19,18 +19,18 @@ pub struct Request {
 }
 
 #[async_trait]
-pub trait Protocol<T>
+pub trait RequestParser<T>
 where T: Send {
     async fn parse(&self, reader: &mut BufReader<ReadHalf>) -> Option<T>;
 }
 
-pub struct ClientToServerProto {
+pub struct BongoRequestParser {
     buffer_allocator_size: usize,
 }
 
 
-impl ClientToServerProto {
-    pub fn new(buffer_allocator_size: usize) -> ClientToServerProto {
+impl BongoRequestParser {
+    pub fn new(buffer_allocator_size: usize) -> BongoRequestParser {
         Self {
             buffer_allocator_size
         }
@@ -38,7 +38,7 @@ impl ClientToServerProto {
 }
 
 #[async_trait]
-impl Protocol<Request> for ClientToServerProto {
+impl RequestParser<Request> for BongoRequestParser {
     async fn parse(&self, reader: &mut BufReader<ReadHalf>) -> Option<Request> {
         let mut buffer = Vec::with_capacity(self.buffer_allocator_size);
 
@@ -108,7 +108,7 @@ impl ReadUntilMultiple for BufReader<ReadHalf<'_>> {
 impl<T: 'static + Send> Webserver<T> {
     pub fn new<F, P>(address: &str, protocol: P, handle_request: F) -> Webserver<T>
         where F: 'static + (Fn(T) -> String) + Send + Sync ,
-              P: 'static + Protocol<T> + Send + Sync,
+              P: 'static + RequestParser<T> + Send + Sync,
               T: Send {
         Self {
             address: String::from(address),
