@@ -3,36 +3,56 @@ use tokio::io::{BufReader, AsyncWriteExt};
 use async_trait::async_trait;
 use std::sync::{Arc};
 
+///
+/// A `Webserver` handling tcp connections in an asynchronous multithreaded manner using the tokio library
+///
 pub struct Webserver<Request>
     where Request: Send {
     address: String,
-    protocol: Box<dyn RequestParser<Request> + Send + Sync>,
+    // as the size of RequestParser and Fn(Request) is unknown at compile time they have to be
+    // stored on the heap using Box
+    request_parser: Box<dyn RequestParser<Request> + Send + Sync>,
     handle_request: Box<dyn (Fn(Request) -> String) + Send + Sync>,
 }
 
-// safe to implement, because it only has read access to its fields
+// safe to implement, because Webserver only has read access to its fields and therefore no mutable
+// shared data exists
 unsafe impl<Request: Send> Send for Webserver<Request> {}
 unsafe impl<Request: Send> Sync for Webserver<Request> {}
 
 
+///
+/// Structs that implement `RequestParser<T>` can be used to parse requests of type `T`
+///
 #[async_trait]
 pub trait RequestParser<Request>
+    // currently requests only require to be `Send`
     where Request: Send {
     async fn parse(&self, reader: &mut BufReader<ReadHalf>) -> Option<Request>;
 }
 
 impl<Request: 'static + Send> Webserver<Request> {
-    pub fn new<F, P>(address: &str, protocol: P, handle_request: F) -> Webserver<Request>
+    ///
+    /// Creates a new instance of `Webserver`
+    ///
+    /// * `address` - An address consisting of HOSTNAME:PORT that the server connects on.
+    /// * `request_parser` - A parser that is used to parse individual `Request`s from the TCP-stream.
+    /// * `handle_request` - A callback function or closure that is called every time a `Request`
+    /// has been parsed from the TCP-stream. This function gets passed the parsed request as an argument.
+    ///
+    pub fn new<F, P>(address: &str, request_parser: P, handle_request: F) -> Webserver<Request>
         where F: 'static + (Fn(Request) -> String) + Send + Sync,
-              P: 'static + RequestParser<Request> + Send + Sync,
-              Request: Send {
+              P: 'static + RequestParser<Request> + Send + Sync{
         Self {
             address: String::from(address),
-            protocol: Box::new(protocol),
+            request_parser: Box::new(request_parser),
             handle_request: Box::new(handle_request),
         }
     }
 
+    ///
+    /// Starts the `Webserver` with the attributes supplied in it`s constructor before
+    ///
     pub async fn start(self) -> String {
         let listener;
 
@@ -51,6 +71,16 @@ impl<Request: 'static + Send> Webserver<Request> {
         }
     }
 
+    ///
+    /// Handles connections in an asynchronous manner
+    ///
+    /// Note:
+    /// We have shared ownership to the instance of `Self` via an `Arc<Self>`.
+    /// This is needed because Self is passed into in arbitrary number of `future`s,
+    /// which are possibly executed on different threads.
+    /// However we do not need mutable access to the instance of `Self`,
+    /// so we do not need to use a `Mutex` or other locking mechanisms
+    ///
     async fn handle_connection(self: Arc<Self>, listener: &TcpListener) -> () {
         let (mut socket, _addr) = listener.accept().await.unwrap();
 
@@ -61,7 +91,7 @@ impl<Request: 'static + Send> Webserver<Request> {
             let mut reader = BufReader::new(read_half);
 
             loop {
-                match self.protocol.parse(&mut reader).await {
+                match self.request_parser.parse(&mut reader).await {
                     Some(request) => {
                         write_half.write_all((self.handle_request)(request).as_bytes()).await.unwrap();
                     }
