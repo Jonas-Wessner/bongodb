@@ -39,6 +39,7 @@ impl<Request: 'static + Send> Webserver<Request> {
     /// * `request_parser` - A parser that is used to parse individual `Request`s from the TCP-stream.
     /// * `handle_request` - A callback function or closure that is called every time a `Request`
     /// has been parsed from the TCP-stream. This function gets passed the parsed request as an argument.
+    /// The returned string will be transmitted via the TCP-stream back to the client of this connection.
     ///
     pub fn new<F, P>(address: &str, request_parser: P, handle_request: F) -> Webserver<Request>
         where F: 'static + (Fn(Request) -> String) + Send + Sync,
@@ -104,3 +105,4 @@ impl<Request: 'static + Send> Webserver<Request> {
         });
     }
 }
+
