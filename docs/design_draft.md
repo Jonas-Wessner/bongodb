@@ -67,7 +67,8 @@
 
 ```json
   {
-  "success_code": ENUM_SUCCESS_CODE,
+  "successful": 0,
+  "error": "something went wrong", 
   "data": [
     [
       1,
@@ -88,12 +89,8 @@
 }
 ```
 
-ENUM_SUCCESS_CODE:
-
-- 0 -> Sucessful
-- 1 -> Error invalid statement
-- 2 -> error correct statement, but cannot be executed
-- possibly other codes
+data is `null` in case the request returns no result. In case it does return a result it is an array containing json
+objects representing the rows. This array may have zero elements if the query returns no rows.
 
 ## Supported SQL statements:
 - Only simple inserts without default values:
