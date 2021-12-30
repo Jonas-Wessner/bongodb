@@ -7,3 +7,4 @@ edition = "2021"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1.52"
 duplicate = "0.3.0"
+sqlparser = "0.13.0"

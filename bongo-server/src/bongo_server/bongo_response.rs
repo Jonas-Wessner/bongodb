@@ -1,56 +1,5 @@
-use duplicate::duplicate;
-
-///
-/// `Serialize` is a trait that marks that an implementor can be serialized to a string representation
-/// in the format used in the communication of `BongoServer` and the client.
-///
-pub trait Serialize {
-    fn serialize(&self) -> String;
-}
-
-///
-/// `BongoDataType` represents all data types of BongoDB.
-///
-/// Each variant contains data that represents an instance of this datatype in Rust.
-///
-pub enum BongoDataType {
-    Int(i64),
-    Bool(bool),
-    Varchar(String, usize),
-}
-
-impl Serialize for BongoDataType {
-    fn serialize(&self) -> String {
-        return match self {
-            BongoDataType::Int(val) => { val.to_string() }
-            BongoDataType::Bool(val) => { val.to_string() }
-            BongoDataType::Varchar(val, _size) => { format!(r#""{}""#, val) }
-        };
-    }
-}
-
-///
-/// `Row` represents one row that is returned in a `BongoResponse::Success` variant.
-///
-type Row = Vec<BongoDataType>;
-
-
-///
-/// Implementation of Serialize for `Row` and `Vec<Row>` using duplicate macro because both
-/// serialize to a json array and therefore share the same code.
-#[duplicate(
-data_type; [ Row ]; [ Vec < Row > ];)]
-impl Serialize for data_type {
-    fn serialize(&self) -> String {
-        std::iter::once(String::from("[ ")).chain(
-            self.into_iter()
-                .map(|d_type| { d_type.serialize() })
-                .intersperse_with(|| { String::from(", ") })
-        )
-            .chain(std::iter::once(String::from(" ]")))
-            .collect::<String>()
-    }
-}
+use crate::bongo_server::types::Row;
+use crate::bongo_server::serialize::Serialize;
 
 ///
 /// `BongoResponse` represents the result of the execution of a `BongoRequest`.

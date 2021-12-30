@@ -1,5 +1,7 @@
-use crate::bongo_server::bongo_response::{BongoResponse, BongoDataType};
+use crate::bongo_server::bongo_response::{BongoResponse};
 use crate::bongo_server::bongo_request::BongoRequest;
+use crate::bongo_server::sql_parser::SqlParser;
+use crate::bongo_server::types::BongoDataType;
 
 pub struct Executor {}
 
@@ -10,6 +12,8 @@ impl Executor {
     }
 
     pub fn execute(&self, request: &BongoRequest) -> BongoResponse {
+        SqlParser::parse(&request.sql);
+
         //  return an example BongoResponse
         BongoResponse::Success(Some(vec![
             vec![
