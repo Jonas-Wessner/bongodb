@@ -1,3 +1,6 @@
+use duplicate::duplicate;
+
+
 pub trait Serialize {
     fn serialize(&self) -> String;
 }
@@ -29,19 +32,12 @@ impl Serialize for BongoDataType {
 type Row = Vec<BongoDataType>;
 
 
-impl Serialize for Row {
-    fn serialize(&self) -> String {
-        std::iter::once(String::from("[ ")).chain(
-            self.into_iter()
-                .map(|d_type| { d_type.serialize() })
-                .intersperse_with(|| { String::from(", ") })
-        )
-            .chain(std::iter::once(String::from(" ]")))
-            .collect::<String>()
-    }
-}
-
-impl Serialize for Vec<Row> {
+///
+/// Implementation of Serialize for `Row` and `Vec<Row>` using duplicate macro because both
+/// serialize to a json array and therefore share the same code.
+#[duplicate(
+data_type; [ Row ]; [ Vec < Row > ];)]
+impl Serialize for data_type {
     fn serialize(&self) -> String {
         std::iter::once(String::from("[ ")).chain(
             self.into_iter()
