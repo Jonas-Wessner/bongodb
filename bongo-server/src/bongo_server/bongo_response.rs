@@ -1,6 +1,9 @@
 use duplicate::duplicate;
 
-
+///
+/// `Serialize` is a trait that marks that an implementor can be serialized to a string representation
+/// in the format used in the communication of `BongoServer` and the client.
+///
 pub trait Serialize {
     fn serialize(&self) -> String;
 }
@@ -76,7 +79,18 @@ pub enum BongoResponse {
     Error(String),
 }
 
-
+///
+/// Implementation of `Serialize` for BongoResponse
+///
+/// Responses are Serialized to the following format:
+///
+/// { "successful": <0_or_1>, "error": "<error_message>", "data": <array_of_rows_or_null> }
+///
+/// <array_of_rows_or_null> in the non-null case has the structure of a json array of rows
+/// where each row is a json array of attributes:
+///
+/// [ [ 1, "Marc", true ], [ 2, "Garry", false ], [ 3, "Peter", true ] <...> ]
+///
 impl Serialize for BongoResponse {
     fn serialize(&self) -> String {
         match self {
