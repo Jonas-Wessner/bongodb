@@ -1,4 +1,4 @@
-trait Serialize {
+pub trait Serialize {
     fn serialize(&self) -> String;
 }
 
@@ -7,10 +7,10 @@ trait Serialize {
 ///
 /// Each variant contains data that represents an instance of this datatype in Rust.
 ///
-enum BongoDataType {
+pub enum BongoDataType {
     Int(i64),
     Bool(bool),
-    Varchar(String, u32),
+    Varchar(String, usize),
 }
 
 impl Serialize for BongoDataType {
@@ -31,14 +31,32 @@ type Row = Vec<BongoDataType>;
 
 impl Serialize for Row {
     fn serialize(&self) -> String {
-        todo!()
+        std::iter::once(String::from("[ ")).chain(
+            self.into_iter()
+                .map(|d_type| { d_type.serialize() })
+                .intersperse_with(|| { String::from(", ") })
+        )
+            .chain(std::iter::once(String::from(" ]")))
+            .collect::<String>()
+    }
+}
+
+impl Serialize for Vec<Row> {
+    fn serialize(&self) -> String {
+        std::iter::once(String::from("[ ")).chain(
+            self.into_iter()
+                .map(|d_type| { d_type.serialize() })
+                .intersperse_with(|| { String::from(", ") })
+        )
+            .chain(std::iter::once(String::from(" ]")))
+            .collect::<String>()
     }
 }
 
 ///
 /// `BongoResponse` represents the result of the execution of a `BongoRequest`.
 ///
-enum BongoResponse {
+pub enum BongoResponse {
     ///
     /// `Success` represents the successful execution of a `BongoRequest`.
     /// It contains an `Optional` containing the result of the execution.
@@ -67,11 +85,11 @@ impl Serialize for BongoResponse {
     fn serialize(&self) -> String {
         match self {
             BongoResponse::Success(result_optional) => {
-                let mut serialized_data;
+                let serialized_data;
 
                 match result_optional {
                     None => {
-                        serialized_data = "none";
+                        serialized_data = String::from("none");
                     }
                     Some(data) => {
                         serialized_data = data.serialize();
@@ -81,7 +99,7 @@ impl Serialize for BongoResponse {
                 Self::assemble_serialized_response(
                     true,
                     "",
-                    data,
+                    &serialized_data,
                 )
             }
             BongoResponse::Error(message) => {

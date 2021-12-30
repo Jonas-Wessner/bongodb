@@ -1,3 +1,5 @@
+#![feature(iter_intersperse)]
+
 use crate::bongo_server::BongoServer;
 use std::process;
 
