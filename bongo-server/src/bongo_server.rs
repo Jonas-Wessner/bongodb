@@ -10,8 +10,6 @@ use crate::bongo_server::executor::Executor;
 
 pub struct BongoServer {}
 
-// TODO: fix bug: only the first request gets a response on the tcp socket when connecting via telnet
-
 impl BongoServer {
     pub async fn start_new(address: &str) -> String {
         let executor = Executor::new();
@@ -19,10 +17,11 @@ impl BongoServer {
         Webserver::new(
             address,
             BongoRequestParser::new(1024),
-            move |request: BongoRequest| {
+            move |request: BongoRequest| -> String {
+                let serialized_response = executor.execute(&request).serialize();
                 println!("request: '{}'", request.sql);
-
-                return executor.execute(&request).serialize();
+                println!("response: '{}'", serialized_response);
+                return serialized_response;
             },
         ).start().await
     }

@@ -95,6 +95,7 @@ impl<Request: 'static + Send> Webserver<Request> {
                 match self.request_parser.parse(&mut reader).await {
                     Some(request) => {
                         write_half.write_all((self.handle_request)(request).as_bytes()).await.unwrap();
+                        write_half.flush().await.unwrap();
                     }
                     None => {
                         println!("A connection has been canceled.");
