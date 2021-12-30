@@ -29,7 +29,7 @@ pub enum BongoResponse {
 }
 
 ///
-/// Implementation of `Serialize` for BongoResponse
+/// Implementation of `Serialize` for `BongoResponse`
 ///
 /// Responses are Serialized to the following format:
 ///

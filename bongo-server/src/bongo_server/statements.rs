@@ -11,6 +11,10 @@ pub enum Ordering {
     Desc(String),
 }
 
+///
+/// `Statement` is the type of statement that the `SqlParser` of `BongoServer` uses.
+/// This is a simplified view of the statement and does not support all sql features.
+///
 pub enum Statement {
     Select {
         cols: Vec<String>,
