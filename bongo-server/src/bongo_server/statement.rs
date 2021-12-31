@@ -1,23 +1,32 @@
 use sqlparser::ast::{Expr};
 use crate::bongo_server::types::{BongoDataType, Column, Row};
 
+#[derive(Debug)]
 pub struct AssignmentExpr {
     var: String,
     val: BongoDataType,
 }
 
+#[derive(Debug)]
 pub enum Ordering {
     Asc(String),
     Desc(String),
+}
+
+#[derive(Debug)]
+pub enum SelectItem {
+    ColumnName(String),
+    Wildcard
 }
 
 ///
 /// `Statement` is the type of statement that the `SqlParser` of `BongoServer` uses.
 /// This is a simplified view of the statement and does not support all sql features.
 ///
+#[derive(Debug)]
 pub enum Statement {
     Select {
-        cols: Vec<String>,
+        cols: Vec<SelectItem>,
         table: String,
         condition: Option<Expr>,
         ordering: Ordering,

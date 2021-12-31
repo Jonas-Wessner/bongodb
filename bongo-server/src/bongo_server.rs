@@ -1,7 +1,7 @@
 mod webserver;
 mod executor;
 mod sql_parser;
-mod statements;
+mod statement;
 mod types;
 mod serialize;
 mod bongo_request;

@@ -8,24 +8,33 @@ pub struct Executor {}
 
 impl Executor {
     pub fn new() -> Self {
-        Self{}
+        Self {}
     }
 
     pub fn execute(&self, request: &BongoRequest) -> BongoResponse {
-        SqlParser::parse(&request.sql);
+        match SqlParser::parse(&request.sql) {
+            Ok(statement) => {
+                println!("statement: {:?}", statement);
 
-        //  return an example BongoResponse
-        BongoResponse::Success(Some(vec![
-            vec![
-                BongoDataType::Int(1),
-                BongoDataType::Varchar(String::from("Marc"), "Marc".len()),
-                BongoDataType::Bool(true)
-            ],
-            vec![
-                BongoDataType::Int(2),
-                BongoDataType::Varchar(String::from("Garry"), "Garry".len()),
-                BongoDataType::Bool(false)
-            ]
-        ]))
+                //  return an example BongoResponse
+                return BongoResponse::Success(Some(vec![
+                    vec![
+                        BongoDataType::Int(1),
+                        BongoDataType::Varchar(String::from("Marc"), "Marc".len()),
+                        BongoDataType::Bool(true)
+                    ],
+                    vec![
+                        BongoDataType::Int(2),
+                        BongoDataType::Varchar(String::from("Garry"), "Garry".len()),
+                        BongoDataType::Bool(false)
+                    ]
+                ]));
+            }
+            Err(m) => {
+                let message = format!("error parsing request with message {}", m);
+                println!("{}", message);
+                return BongoResponse::Error(message);
+            }
+        }
     }
 }
