@@ -1,5 +1,5 @@
-use crate::bongo_server::types::Row;
-use crate::bongo_server::serialize::Serialize;
+use crate::types::Row;
+use crate::serialize::Serialize;
 
 ///
 /// `BongoResponse` represents the result of the execution of a `BongoRequest`.

@@ -1,5 +1,5 @@
-mod webserver;
-mod executor;
+#![feature(iter_intersperse)]
+
 mod sql_parser;
 mod statement;
 mod types;
@@ -7,10 +7,14 @@ mod serialize;
 mod bongo_request;
 mod bongo_response;
 
-use crate::bongo_server::webserver::{Webserver};
-use crate::bongo_server::bongo_request::{BongoRequestParser, BongoRequest};
-use crate::bongo_server::serialize::{Serialize};
-use crate::bongo_server::executor::Executor;
+mod webserver;
+mod executor;
+
+
+use crate::webserver::{Webserver};
+use crate::bongo_request::{BongoRequestParser, BongoRequest};
+use crate::serialize::{Serialize};
+use crate::executor::Executor;
 
 pub struct BongoServer {}
 
@@ -30,3 +34,4 @@ impl BongoServer {
         ).start().await
     }
 }
+

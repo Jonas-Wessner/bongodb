@@ -1,9 +1,5 @@
-#![feature(iter_intersperse)]
-
-use crate::bongo_server::BongoServer;
+use bongo_server::BongoServer;
 use std::process;
-
-mod bongo_server;
 
 #[tokio::main]
 async fn main() {

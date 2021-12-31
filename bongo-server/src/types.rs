@@ -1,6 +1,6 @@
 use duplicate::duplicate;
 
-use crate::bongo_server::serialize::Serialize;
+use crate::serialize::Serialize;
 
 ///
 /// `BongoDataType` represents all data types of BongoDB.

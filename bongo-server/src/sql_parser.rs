@@ -3,7 +3,7 @@ pub struct SqlParser {}
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select};
-use crate::bongo_server::statement::{Statement, SelectItem as BongoSelectItem, Ordering};
+use crate::statement::{Statement, SelectItem as BongoSelectItem, Ordering};
 use std::fmt;
 
 impl SqlParser {

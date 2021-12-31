@@ -1,7 +1,7 @@
-use crate::bongo_server::bongo_response::{BongoResponse};
-use crate::bongo_server::bongo_request::BongoRequest;
-use crate::bongo_server::sql_parser::SqlParser;
-use crate::bongo_server::types::BongoDataType;
+use crate::bongo_response::{BongoResponse};
+use crate::bongo_request::BongoRequest;
+use crate::sql_parser::SqlParser;
+use crate::types::BongoDataType;
 
 pub struct Executor {}
 

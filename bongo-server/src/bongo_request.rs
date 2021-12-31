@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use tokio::io::{self, BufReader, AsyncBufReadExt};
 use tokio::net::tcp::ReadHalf;
 
-use crate::bongo_server::webserver::RequestParser;
+use crate::webserver::RequestParser;
 
 ///
 /// A Request from a bongo client to a `BongoServer`

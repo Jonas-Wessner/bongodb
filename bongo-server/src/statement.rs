@@ -1,5 +1,5 @@
 use sqlparser::ast::{Expr};
-use crate::bongo_server::types::{BongoDataType, Column, Row};
+use crate::types::{BongoDataType, Column, Row};
 
 #[derive(Debug)]
 pub struct AssignmentExpr {
@@ -16,7 +16,7 @@ pub enum Ordering {
 #[derive(Debug)]
 pub enum SelectItem {
     ColumnName(String),
-    Wildcard
+    Wildcard,
 }
 
 ///
