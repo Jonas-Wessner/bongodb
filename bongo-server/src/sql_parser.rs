@@ -2,8 +2,8 @@ pub struct SqlParser {}
 
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
-use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator};
-use crate::statement::{Statement, SelectItem as BongoSelectItem, Ordering};
+use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr};
+use crate::statement::{Statement, SelectItem as BongoSelectItem, Order};
 use std::fmt;
 use std::ascii::escape_default;
 
@@ -15,6 +15,10 @@ fn only_single_table_from_err<T>() -> Result<T, String> {
     unsupported_feature_err("Only single identifiers are supported in the FROM clause. Example: Select col_1 FROM table_1")
 }
 
+fn order_by_only_one_column_err<T>() -> Result<T, String> {
+    unsupported_feature_err("ORDER BY is only supported with exactly one argument which must be a column name.")
+}
+
 // TODO: return appropriate errors on all unsafe accesses such as absolute vector indexers
 
 impl SqlParser {
@@ -24,7 +28,7 @@ impl SqlParser {
         let sql = "SELECT *, col_1, col_2 \
            FROM table_1 \
            WHERE a > b AND b < 100 \
-           ORDER BY col_1";
+           ORDER BY col_1 ASC";
 
         let mut parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
 
@@ -41,7 +45,6 @@ impl SqlParser {
                 }
             }
         };
-
     }
 
     fn ast_to_statement(ast: Ast) -> Result<Statement, String> {
@@ -67,9 +70,8 @@ impl SqlParser {
                     Statement::Select {
                         cols: Self::extract_select_cols(&select)?,
                         table: Self::extract_select_table(&select)?,
+                        order: Self::extract_select_order(&query.order_by)?,
                         condition: Self::extract_select_condition(*select)?,
-                        // TODO: implement ordering parsing
-                        ordering: Ordering::Asc("ordering parsing not implemented".to_string()),
                     })
             }
             _ => {
@@ -149,7 +151,7 @@ impl SqlParser {
     fn extract_select_condition(select: Select) -> Result<Option<Expr>, String> {
         return match &select.selection {
             Some(cond) => {
-                if !Self::expr_is_supported(&cond) {
+                if !Self::expr_is_supported_where(&cond) {
                     return unsupported_feature_err("This type of expression is not supported in a WHERE clause by BongoDB.");
                 }
                 Ok(select.selection)
@@ -161,7 +163,7 @@ impl SqlParser {
     }
 
     // Checks recursively if an expression is supported in WHERE clauses by BongoDB
-    fn expr_is_supported(expr: &Expr) -> bool {
+    fn expr_is_supported_where(expr: &Expr) -> bool {
         return match expr {
             // only binary operators, identifiers and values are supported
             Expr::Identifier(_) | Expr::Value(_) => { true }
@@ -176,7 +178,7 @@ impl SqlParser {
                     BinaryOperator::And |
                     BinaryOperator::Or => {
                         // each operand of a binary operation must also itself be a supported expression
-                        Self::expr_is_supported(left) && Self::expr_is_supported(right)
+                        Self::expr_is_supported_where(left) && Self::expr_is_supported_where(right)
                     }
                     _ => {
                         return false;
@@ -186,4 +188,48 @@ impl SqlParser {
             _ => { false }
         };
     }
+
+    fn extract_select_order(order_by_exprs: &Vec<OrderByExpr>) -> Result<Order, String> {
+        if order_by_exprs.len() != 1 {
+            return order_by_only_one_column_err();
+        }
+
+        let order_by_expr = &order_by_exprs[0];
+
+        return match &order_by_expr.expr {
+            Expr::Identifier(ident) => {
+                let column = String::from(&ident.value);
+
+                return Ok(
+                    match order_by_expr {
+                        OrderByExpr { asc, .. } => {
+                            match asc {
+                                None => { Order::Asc(column) }
+                                Some(is_asc) => {
+                                    match is_asc {
+                                        true => { Order::Asc(column) }
+                                        false => { Order::Desc(column) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                );
+            }
+            _ => {
+                order_by_only_one_column_err()
+            }
+        };
+    }
+
+    fn expr_is_supported_order_by(expr: &Expr) -> bool {
+        // so far only ordering by one column is supported -> only identifiers are valid
+        return match expr {
+            Expr::Identifier(_) => { true }
+            _ => { false }
+        };
+    }
 }
+
+#[cfg(test)]
+mod tests {}

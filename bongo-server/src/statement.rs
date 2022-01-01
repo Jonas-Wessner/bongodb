@@ -8,7 +8,7 @@ pub struct AssignmentExpr {
 }
 
 #[derive(Debug)]
-pub enum Ordering {
+pub enum Order {
     Asc(String),
     Desc(String),
 }
@@ -29,7 +29,7 @@ pub enum Statement {
         cols: Vec<SelectItem>,
         table: String,
         condition: Option<Expr>,
-        ordering: Ordering,
+        order: Order,
     },
     Insert {
         table: String,
