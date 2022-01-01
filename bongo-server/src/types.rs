@@ -8,6 +8,7 @@ use crate::serialize::Serialize;
 /// Each variant contains data that represents an instance of this datatype in Rust.
 ///
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum BongoDataType {
     Int(i64),
     Bool(bool),
@@ -27,6 +28,7 @@ impl Serialize for BongoDataType {
 
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub struct Column {
     name: String,
     data_type: BongoDataType,

@@ -2,18 +2,21 @@ use sqlparser::ast::{Expr};
 use crate::types::{BongoDataType, Column, Row};
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub struct AssignmentExpr {
     var: String,
     val: BongoDataType,
 }
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum Order {
     Asc(String),
     Desc(String),
 }
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum SelectItem {
     ColumnName(String),
     Wildcard,
@@ -24,12 +27,13 @@ pub enum SelectItem {
 /// This is a simplified view of the statement and does not support all sql features.
 ///
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum Statement {
     Select {
         cols: Vec<SelectItem>,
         table: String,
         condition: Option<Expr>,
-        order: Order,
+        order: Option<Order>,
     },
     Insert {
         table: String,

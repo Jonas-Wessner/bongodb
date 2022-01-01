@@ -21,14 +21,11 @@ fn order_by_only_one_column_err<T>() -> Result<T, String> {
 
 // TODO: return appropriate errors on all unsafe accesses such as absolute vector indexers
 
+// TODO: Implement custom Expr that uses the BongoDataType instead of the Value type from the sqlparser library
+
 impl SqlParser {
     pub fn parse(sql: &str) -> Result<Statement, String> {
         let dialect = GenericDialect {};
-
-        let sql = "SELECT *, col_1, col_2 \
-           FROM table_1 \
-           WHERE a > b AND b < 100 \
-           ORDER BY col_1 ASC";
 
         let mut parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
 
@@ -60,12 +57,8 @@ impl SqlParser {
     }
 
     fn query_to_statement(query: Query) -> Result<Statement, String> {
-        println!("query: {:?}", query);
         return match query.body {
             SetExpr::Select(select) => {
-                println!("select: {:?}", select);
-
-
                 Ok(
                     Statement::Select {
                         cols: Self::extract_select_cols(&select)?,
@@ -189,8 +182,11 @@ impl SqlParser {
         };
     }
 
-    fn extract_select_order(order_by_exprs: &Vec<OrderByExpr>) -> Result<Order, String> {
-        if order_by_exprs.len() != 1 {
+    fn extract_select_order(order_by_exprs: &Vec<OrderByExpr>) -> Result<Option<Order>, String> {
+        if order_by_exprs.len() == 0 {
+            return Ok(None);
+        }
+        if order_by_exprs.len() > 1 {
             return order_by_only_one_column_err();
         }
 
@@ -200,7 +196,7 @@ impl SqlParser {
             Expr::Identifier(ident) => {
                 let column = String::from(&ident.value);
 
-                return Ok(
+                return Ok(Some(
                     match order_by_expr {
                         OrderByExpr { asc, .. } => {
                             match asc {
@@ -214,7 +210,7 @@ impl SqlParser {
                             }
                         }
                     }
-                );
+                ));
             }
             _ => {
                 order_by_only_one_column_err()
@@ -232,4 +228,90 @@ impl SqlParser {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::SqlParser;
+    use crate::statement::{Statement, SelectItem, Order};
+    use sqlparser::ast::{Expr, Ident, BinaryOperator};
+    use sqlparser::ast::Expr::{BinaryOp, Identifier, Value};
+    use sqlparser::tokenizer::Token::Number;
+    use sqlparser::ast::Value as ValueEnum;
+    use crate::statement::SelectItem::Wildcard;
+
+    #[test]
+    fn select_all_features_together() {
+        let sql = "SELECT *, col_1, col_2 \
+           FROM table_1 \
+           WHERE a > b AND b < 100 \
+           ORDER BY col_1 ASC";
+
+        let expected_statement = Statement::Select {
+            cols: vec![
+                SelectItem::Wildcard,
+                SelectItem::ColumnName(String::from("col_1")),
+                SelectItem::ColumnName(String::from("col_2"))
+            ],
+            table: String::from("table_1"),
+            order: Some(Order::Asc(String::from("col_1"))),
+            condition: Some(
+                Expr::BinaryOp {
+                    left: Box::new(BinaryOp {
+                        left: Box::new(Identifier(Ident {
+                            value: String::from("a"),
+                            quote_style: None,
+                        })),
+                        op: BinaryOperator::Gt,
+                        right: Box::new(Identifier(Ident {
+                            value: (String::from("b")),
+                            quote_style: None,
+                        })),
+                    }),
+                    op: BinaryOperator::And,
+                    right: Box::new(BinaryOp {
+                        left: Box::new(Identifier(Ident {
+                            value: String::from("b"),
+                            quote_style: None,
+                        })),
+                        op: BinaryOperator::Lt,
+                        right: Box::new(Value(ValueEnum::Number(String::from("100"), false))),
+                    }),
+                }
+            ),
+        };
+
+        //     op: BinaryOperator::And,
+        //     right: BinaryOp {
+        //         left: Identifier(Ident {
+        //             value: (String::from("b")),
+        //             quote_style: None,
+        //         }),
+        //         op: BinaryOperator::Lt,
+        //         right: Value(Value::Number(String::from("100"))),
+        //     })
+
+        let statement = SqlParser::parse(sql);
+
+        assert_eq!(statement, Ok(expected_statement));
+    }
+
+    #[test]
+    fn select_simple_wildcard() {
+        let sql = "SELECT * FROM table_1;";
+
+        let statement = SqlParser::parse(sql);
+
+        let expected_statement = Statement::Select {
+            cols: vec![
+                SelectItem::Wildcard
+            ],
+            table: String::from("table_1"),
+            condition: None,
+            order: None
+        };
+
+        assert_eq!(statement, Ok(expected_statement));
+    }
+}
+
+
+
+
