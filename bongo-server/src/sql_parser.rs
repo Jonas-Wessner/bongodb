@@ -2,9 +2,19 @@ pub struct SqlParser {}
 
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
-use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select};
+use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins};
 use crate::statement::{Statement, SelectItem as BongoSelectItem, Ordering};
 use std::fmt;
+
+fn unsupported_feature_err<T>(err_message: &str) -> Result<T, String> {
+    Err(String::from("Unsupported Feature: ") + err_message)
+}
+
+fn only_single_table_from_err<T>() -> Result<T, String> {
+    unsupported_feature_err("Only single identifiers are supported in the FROM clause. Example: Select col_1 FROM table_1")
+}
+
+// TODO: return appropriate errors on all unsafe accesses such as absolute vector indexers
 
 impl SqlParser {
     pub fn parse(sql: &str) -> Result<Statement, String> {
@@ -13,7 +23,7 @@ impl SqlParser {
         let sql = "SELECT *, col_1, col_2 \
            FROM table_1 \
            WHERE a > b AND b < 100 \
-           ORDER BY a DESC, b";
+           ORDER BY col_1";
 
         let parse_result = Parser::parse_sql(&dialect, sql);
 
@@ -35,18 +45,15 @@ impl SqlParser {
     }
 
     fn ast_to_statement(ast: &Ast) -> Result<Statement, String> {
-        match ast {
-            Ast::Query(query) => {
-                return Self::query_to_statement(query);
-            }
-            Ast::Insert { .. } => {}
-            Ast::Update { .. } => {}
-            Ast::Delete { .. } => {}
-            Ast::CreateTable { .. } => {}
-            Ast::Drop { .. } => {}
-            _ => {}
-        }
-        return Err(String::from("Not yet implemented"));
+        return match ast {
+            Ast::Query(query) => { Self::query_to_statement(query) }
+            Ast::Insert { .. } => { Err(String::from("not yet implemented")) }
+            Ast::Update { .. } => { Err(String::from("not yet implemented")) }
+            Ast::Delete { .. } => { Err(String::from("not yet implemented")) }
+            Ast::CreateTable { .. } => { Err(String::from("not yet implemented")) }
+            Ast::Drop { .. } => { Err(String::from("not yet implemented")) }
+            _ => { unsupported_feature_err("Only the following statements are supported by BongoDB: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, CREATE DATABASE, DROP TABLE, DROP DATABASE.") }
+        };
     }
 
     fn query_to_statement(query: &Query) -> Result<Statement, String> {
@@ -55,12 +62,10 @@ impl SqlParser {
             SetExpr::Select(select) => {
                 println!("select: {:?}", select);
 
-                let cols = Self::extract_select_cols(&select)?;
 
                 Ok(Statement::Select {
-                    cols,
-                    // TODO: implement table parsing
-                    table: "table parsing not implemented".to_string(),
+                    cols: Self::extract_select_cols(&select)?,
+                    table: Self::extract_table(&select)?,
                     condition: None,
                     // TODO: implement condition parsing
                     ordering: Ordering::Asc("ordering parsing not implemented".to_string()),
@@ -68,7 +73,7 @@ impl SqlParser {
                 })
             }
             _ => {
-                Err(String::from("Unsupported Feature: This query syntax is not supported."))
+                unsupported_feature_err("This query syntax is not supported.")
             }
         };
     }
@@ -83,7 +88,7 @@ impl SqlParser {
                                 Ok(BongoSelectItem::ColumnName(String::from(&ident.value)))
                             }
                             _ => {
-                                Err(String::from("Unsupported Feature: only identifiers are supported to be selected."))
+                                unsupported_feature_err("Only identifiers are supported in a projection inside a SELECT.")
                             }
                         }
                     }
@@ -91,7 +96,7 @@ impl SqlParser {
                         Ok(BongoSelectItem::Wildcard)
                     }
                     _ => {
-                        Err(String::from("Unsupported Feature: Only unqualified Wildcards are supported."))
+                        unsupported_feature_err("Only unqualified Wildcards are supported. Example: `SELECT * FROM ...`")
                     }
                 };
             }).collect::<Vec<Result<BongoSelectItem, String>>>();
@@ -116,6 +121,28 @@ impl SqlParser {
                 .map(|item| -> BongoSelectItem {
                     item.unwrap()
                 }).collect::<Vec<BongoSelectItem>>())
+        };
+    }
+
+    fn extract_table(select: &Select) -> Result<String, String> {
+        let tables_with_joins: &Vec<TableWithJoins> = &select.from;
+
+        if tables_with_joins.len() != 1 {
+            return only_single_table_from_err();
+        }
+        let table_factor: &TableFactor = &tables_with_joins[0].relation;
+
+        return match &table_factor {
+            TableFactor::Table { name, .. } => {
+                if name.0.len() != 1 {
+                    return only_single_table_from_err();
+                }
+
+                Ok(String::from(&name.0[0].value))
+            }
+            _ => {
+                only_single_table_from_err()
+            }
         };
     }
 }
