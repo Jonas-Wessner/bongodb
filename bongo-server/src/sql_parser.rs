@@ -2,9 +2,10 @@ pub struct SqlParser {}
 
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
-use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins};
+use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator};
 use crate::statement::{Statement, SelectItem as BongoSelectItem, Ordering};
 use std::fmt;
+use std::ascii::escape_default;
 
 fn unsupported_feature_err<T>(err_message: &str) -> Result<T, String> {
     Err(String::from("Unsupported Feature: ") + err_message)
@@ -25,28 +26,27 @@ impl SqlParser {
            WHERE a > b AND b < 100 \
            ORDER BY col_1";
 
-        let parse_result = Parser::parse_sql(&dialect, sql);
+        let mut parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
 
-        let ast;
-        match &parse_result {
-            Ok(stmts) => {
-                ast = &stmts[0];
+        return match parse_result {
+            Ok(mut stmts) => {
+                // move element out of vector for later use, as the vector is not used anyways
+                Self::ast_to_statement(stmts.remove(0))
             }
             Err(err) => {
-                return match err {
+                match err {
                     ParserError::TokenizerError(m) | ParserError::ParserError(m) => {
                         Err(String::from(m))
                     }
-                };
+                }
             }
-        }
+        };
 
-        return Self::ast_to_statement(&ast);
     }
 
-    fn ast_to_statement(ast: &Ast) -> Result<Statement, String> {
+    fn ast_to_statement(ast: Ast) -> Result<Statement, String> {
         return match ast {
-            Ast::Query(query) => { Self::query_to_statement(query) }
+            Ast::Query(query) => { Self::query_to_statement(*query) }
             Ast::Insert { .. } => { Err(String::from("not yet implemented")) }
             Ast::Update { .. } => { Err(String::from("not yet implemented")) }
             Ast::Delete { .. } => { Err(String::from("not yet implemented")) }
@@ -56,21 +56,21 @@ impl SqlParser {
         };
     }
 
-    fn query_to_statement(query: &Query) -> Result<Statement, String> {
+    fn query_to_statement(query: Query) -> Result<Statement, String> {
         println!("query: {:?}", query);
-        return match &query.body {
+        return match query.body {
             SetExpr::Select(select) => {
                 println!("select: {:?}", select);
 
 
-                Ok(Statement::Select {
-                    cols: Self::extract_select_cols(&select)?,
-                    table: Self::extract_table(&select)?,
-                    condition: None,
-                    // TODO: implement condition parsing
-                    ordering: Ordering::Asc("ordering parsing not implemented".to_string()),
-                    // TODO: implement ordering parsing
-                })
+                Ok(
+                    Statement::Select {
+                        cols: Self::extract_select_cols(&select)?,
+                        table: Self::extract_select_table(&select)?,
+                        condition: Self::extract_select_condition(*select)?,
+                        // TODO: implement ordering parsing
+                        ordering: Ordering::Asc("ordering parsing not implemented".to_string()),
+                    })
             }
             _ => {
                 unsupported_feature_err("This query syntax is not supported.")
@@ -124,7 +124,7 @@ impl SqlParser {
         };
     }
 
-    fn extract_table(select: &Select) -> Result<String, String> {
+    fn extract_select_table(select: &Select) -> Result<String, String> {
         let tables_with_joins: &Vec<TableWithJoins> = &select.from;
 
         if tables_with_joins.len() != 1 {
@@ -143,6 +143,47 @@ impl SqlParser {
             _ => {
                 only_single_table_from_err()
             }
+        };
+    }
+
+    fn extract_select_condition(select: Select) -> Result<Option<Expr>, String> {
+        return match &select.selection {
+            Some(cond) => {
+                if !Self::expr_is_supported(&cond) {
+                    return unsupported_feature_err("This type of expression is not supported in a WHERE clause by BongoDB.");
+                }
+                Ok(select.selection)
+            }
+            None => {
+                Ok(None)
+            }
+        };
+    }
+
+    // Checks recursively if an expression is supported in WHERE clauses by BongoDB
+    fn expr_is_supported(expr: &Expr) -> bool {
+        return match expr {
+            // only binary operators, identifiers and values are supported
+            Expr::Identifier(_) | Expr::Value(_) => { true }
+            Expr::BinaryOp { op, left, right } => {
+                match op {
+                    BinaryOperator::Gt |
+                    BinaryOperator::Lt |
+                    BinaryOperator::GtEq |
+                    BinaryOperator::LtEq |
+                    BinaryOperator::Eq |
+                    BinaryOperator::NotEq |
+                    BinaryOperator::And |
+                    BinaryOperator::Or => {
+                        // each operand of a binary operation must also itself be a supported expression
+                        Self::expr_is_supported(left) && Self::expr_is_supported(right)
+                    }
+                    _ => {
+                        return false;
+                    }
+                }
+            }
+            _ => { false }
         };
     }
 }

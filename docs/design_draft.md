@@ -48,7 +48,8 @@
 
       [https://www.youtube.com/watch?v=OyBwIjnQLtI](https://www.youtube.com/watch?v=OyBwIjnQLtI)
 
-    tcp connected → new thread → wait for commands → parse sql → check for concurrent access → execute command → return result → send response with result → wait for new commands (back to step 3) → client exit thread
+  tcp connected → new thread → wait for commands → parse sql → check for concurrent access → execute command → return
+  result → send response with result → wait for new commands (back to step 3) → client exit thread
 
 ## Data format transmitted via tcp between server and client
 
@@ -63,12 +64,13 @@
   knows which table shall be queried.
 - Only select returns an array of "data". Other statements return an empty array of "data"
   For select statements:
-- As every transmitted information is encoded in json, the webserver knows, when a message is fully transmitted over tcp. Therefore another transmitting protocol like HTTP, which would cause too much overhead, can be omitted.
+- As every transmitted information is encoded in json, the webserver knows, when a message is fully transmitted over
+  tcp. Therefore another transmitting protocol like HTTP, which would cause too much overhead, can be omitted.
 
 ```json
   {
   "successful": 0,
-  "error": "something went wrong", 
+  "error": "something went wrong",
   "data": [
     [
       1,
@@ -93,36 +95,44 @@ data is `null` in case the request returns no result. In case it does return a r
 objects representing the rows. This array may have zero elements if the query returns no rows.
 
 ## Supported SQL statements:
+
 - Only simple inserts without default values:
+
 ```sql
 INSERT INTO table_name (column_list)
-VALUES
-    (value_list_1),
-    (value_list_2),
+VALUES (value_list_1),
+       (value_list_2),
     ...
     (value_list_n);
 ```
 
 ```sql
 UPDATE table_name
-SET column1 = value1, column2 = value2, ...
-WHERE condition; 
+SET column1 = value1,
+    column2 = value2, ...
+    WHERE condition; 
 ```
 
 ```sql
-DELETE FROM table_name WHERE condition;
+DELETE
+FROM table_name
+WHERE condition;
 ```
 
 ```sql
-CREATE DATABASE testDB;
+CREATE
+DATABASE testDB;
 ```
 
 ```sql
-CREATE TABLE table_name (
-                            column1 datatype,
-                            column2 datatype,
-                            column3 datatype,
-    ....
+CREATE TABLE table_name
+(
+    column1 datatype,
+    column2 datatype,
+    column3 datatype, .
+    .
+    .
+    .
 ); 
 ```
 
@@ -131,14 +141,24 @@ DROP TABLE table_name;
 ```
 
 ```sql
-DROP DATABASE databasename; 
+DROP
+DATABASE databasename; 
 ```
 
 ### Major restrictions:
 
-- Where Conditions only with operators <, > = (especially no AND, OR operators)
-- No JOINs
+Supported Operators in where conditions:
 
+- Gt
+- Lt
+- GtEq
+- LtEq
+- Eq
+- NotEq
+- And
+- Or
+
+No JOINs
 
 # Database client library
 
