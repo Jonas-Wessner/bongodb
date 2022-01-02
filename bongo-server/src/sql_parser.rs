@@ -40,6 +40,8 @@ fn insert_list_only_literals<T>() -> Result<T, String> {
 
 // TODO: return appropriate errors on all unsafe accesses such as absolute vector indexers
 
+// TODO: create error classes
+
 impl SqlParser {
     pub fn parse(sql: &str) -> Result<Statement, String> {
         let dialect = GenericDialect {};
@@ -66,7 +68,7 @@ impl SqlParser {
             Ast::Query(query) => { Self::query_to_statement(*query) }
             Ast::Insert { .. } => { Self::insert_to_statement(ast) }
             Ast::Update { .. } => { Self::update_to_statement(ast) }
-            Ast::Delete { .. } => { Err(String::from("not yet implemented")) }
+            Ast::Delete { .. } => { Self::delete_to_statement(ast) }
             Ast::CreateTable { .. } => { Err(String::from("not yet implemented")) }
             Ast::Drop { .. } => { Err(String::from("not yet implemented")) }
             _ => { unsupported_feature_err("Only the following statements are supported by BongoDB: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, CREATE DATABASE, DROP TABLE, DROP DATABASE.") }
@@ -314,6 +316,22 @@ impl SqlParser {
             the right hand side operator is a literal.")
         };
     }
+
+    fn delete_to_statement(delete: Ast) -> Result<Statement, String> {
+        return match delete {
+            Ast::Delete { selection, table_name } => {
+                if table_name.0.len() != 1 {
+                    return syntax_error("Delete clauses must specify exactly one statement")
+                }
+                Ok(
+                    Statement::Delete {
+                    table: String::from(&table_name.0[0].value),
+                    condition: Self::opt_bongo_expr_from_opt_expr(selection)?,
+                })
+            }
+            _ => { internal_error("delete_to_statement should only be called with the Delete variant.") }
+        };
+    }
 }
 
 #[cfg(test)]
@@ -447,19 +465,31 @@ mod tests {
 
     mod delete {
         use crate::sql_parser::SqlParser;
-        use crate::statement::Statement;
+        use crate::statement::{Statement, Expr as BongoExpr, BinOp as BongoBinOp};
+        use crate::types::{BongoDataType};
 
         #[test]
         fn nested_condition() {
-            // TODO: add sql for test
-            let sql = r#""#;
+            let sql = r#"DELETE FROM table_1
+           WHERE a != b OR c = false"#;
 
             let statement = SqlParser::parse(sql);
 
-            // TODO: define correct expected statement
             let expected_statement = Statement::Delete {
-                table: "".to_string(),
-                condition: None,
+                table: "table_1".to_string(),
+                condition: Some(BongoExpr::BinaryExpr {
+                    left: Box::new(BongoExpr::BinaryExpr {
+                        left: Box::new(BongoExpr::Identifier(String::from("a"))),
+                        op: BongoBinOp::NotEq,
+                        right: Box::new((BongoExpr::Identifier(String::from("b")))),
+                    }),
+                    op: BongoBinOp::Or,
+                    right: Box::new(BongoExpr::BinaryExpr {
+                        left: Box::new(BongoExpr::Identifier(String::from("c"))),
+                        op: BongoBinOp::Eq,
+                        right: Box::new(BongoExpr::Value(BongoDataType::Bool(false))),
+                    }),
+                }),
             };
 
             assert_eq!(statement, Ok(expected_statement));
