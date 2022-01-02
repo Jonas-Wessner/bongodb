@@ -7,8 +7,8 @@ use crate::statement::Expr::BinaryExpr;
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct Assignment {
-    pub(crate) varname: String,
-    pub(crate) val: BongoDataType,
+    pub varname: String,
+    pub val: BongoDataType,
 }
 
 impl TryFrom<SqlParserAssignment> for Assignment {
@@ -28,7 +28,7 @@ impl TryFrom<SqlParserAssignment> for Assignment {
                 Ok(
                     Self {
                         varname: String::from(&parser_assignment.id[0].value),
-                        val: BongoDataType::Null,
+                        val,
                     })
             }
             _ => { Err(()) }
