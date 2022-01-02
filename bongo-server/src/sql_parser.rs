@@ -540,15 +540,3 @@ mod tests {
         }
     }
 }
-
-//     Delete {
-//         table: String,
-//         condition: Option<Expr>,
-//     },
-//     CreateDB { table: String },
-//     CreateTable {
-//         table: String,
-//         cols: Vec<Column>,
-//     },
-//     DropTable { table: String },
-//     DropDB { database: String },
