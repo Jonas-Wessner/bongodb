@@ -318,6 +318,8 @@ impl SqlParser {
 
 #[cfg(test)]
 mod tests {
+    use crate::statement::Statement;
+
     mod select {
         use sqlparser::ast::{Expr, Ident, BinaryOperator};
         use sqlparser::ast::Expr::{BinaryOp, Identifier, Value};
@@ -442,8 +444,111 @@ mod tests {
             assert_eq!(statement, Ok(expected_statement));
         }
     }
+
+    mod delete {
+        use crate::sql_parser::SqlParser;
+        use crate::statement::Statement;
+
+        #[test]
+        fn nested_condition() {
+            // TODO: add sql for test
+            let sql = r#""#;
+
+            let statement = SqlParser::parse(sql);
+
+            // TODO: define correct expected statement
+            let expected_statement = Statement::Delete {
+                table: "".to_string(),
+                condition: None,
+            };
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+    }
+
+    mod create_db {
+        use crate::statement::Statement;
+        use crate::sql_parser::SqlParser;
+
+        #[test]
+        fn create_db() {
+            // TODO: add sql for test
+            let sql = r#""#;
+
+            let statement = SqlParser::parse(sql);
+
+            // TODO: define correct expected statement
+            let expected_statement = Statement::CreateDB { table: "".to_string() };
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+    }
+
+    mod create_table {
+        use crate::sql_parser::SqlParser;
+        use crate::statement::Statement;
+
+        fn create_table() {
+            // TODO: add sql for test
+            let sql = r#""#;
+
+            let statement = SqlParser::parse(sql);
+
+            // TODO: define correct expected statement
+            let expected_statement = Statement::CreateTable {
+                table: "".to_string(),
+                cols: vec![],
+            };
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+    }
+
+    mod drop_db {
+        use crate::sql_parser::SqlParser;
+        use crate::statement::Statement;
+
+        #[test]
+        fn drop_db() {
+            // TODO: add sql for test
+            let sql = r#""#;
+
+            let statement = SqlParser::parse(sql);
+
+            // TODO: define correct expected statement
+            let expected_statement = Statement::DropDB { database: "".to_string() };
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+    }
+
+    mod drop_table {
+        use crate::sql_parser::SqlParser;
+        use crate::statement::Statement;
+
+        #[test]
+        fn drop_table() {
+            // TODO: add sql for test
+            let sql = r#""#;
+
+            let statement = SqlParser::parse(sql);
+
+            // TODO: define correct expected statement
+            let expected_statement = Statement::DropTable { table: "".to_string() };
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+    }
 }
 
-
-
-
+//     Delete {
+//         table: String,
+//         condition: Option<Expr>,
+//     },
+//     CreateDB { table: String },
+//     CreateTable {
+//         table: String,
+//         cols: Vec<Column>,
+//     },
+//     DropTable { table: String },
+//     DropDB { database: String },
