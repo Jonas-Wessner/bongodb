@@ -100,6 +100,7 @@ impl TryFrom<SqlParserExpr> for Expr {
     type Error = ();
 
     fn try_from(expr: SqlParserExpr) -> Result<Self, Self::Error> {
+        println!("{:?}", expr);
         return match expr {
             SqlParserExpr::Identifier(ident) => { Ok(Expr::Identifier(ident.value)) }
             SqlParserExpr::Value(value) => {

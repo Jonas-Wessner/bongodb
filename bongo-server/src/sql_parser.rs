@@ -44,7 +44,7 @@ impl SqlParser {
     pub fn parse(sql: &str) -> Result<Statement, String> {
         let dialect = GenericDialect {};
 
-        let mut parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
+        let parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
 
         return match parse_result {
             Ok(mut stmts) => {
@@ -65,7 +65,7 @@ impl SqlParser {
         return match ast {
             Ast::Query(query) => { Self::query_to_statement(*query) }
             Ast::Insert { .. } => { Self::insert_to_statement(ast) }
-            Ast::Update { .. } => { Err(format!("{:?}", ast)) }
+            Ast::Update { .. } => { Self::update_to_statement(ast) }
             Ast::Delete { .. } => { Err(String::from("not yet implemented")) }
             Ast::CreateTable { .. } => { Err(String::from("not yet implemented")) }
             Ast::Drop { .. } => { Err(String::from("not yet implemented")) }
@@ -292,7 +292,8 @@ impl SqlParser {
     }
 
     fn bongo_assignment_from_assignments(assignments: Vec<Assignment>) -> Result<Vec<BongoAssignment>, String> {
-        let mut ok = false;
+        let mut ok = true;
+
         let bongo_assignments = assignments.into_iter()
             .map(|assignment| {
                 return match BongoAssignment::try_from(assignment) {
@@ -418,8 +419,8 @@ mod tests {
         #[test]
         fn multiple_set_expr() {
             let sql = r#"UPDATE table_1
-            SET col_1 = 2
-                col_2 = 'new_value;'"#;
+            SET col_1 = 2,
+                col_2 = 'new_value';"#;
 
             let statement = SqlParser::parse(sql);
 
@@ -437,6 +438,8 @@ mod tests {
                 ],
                 condition: None,
             };
+
+            assert_eq!(statement, Ok(expected_statement));
         }
     }
 }
