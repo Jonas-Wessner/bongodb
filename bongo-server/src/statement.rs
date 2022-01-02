@@ -1,14 +1,39 @@
 use crate::types::{BongoDataType, Column, Row};
 use std::convert::TryFrom;
-use sqlparser::ast::{Expr as SqlParserExpr, Value, BinaryOperator as SqlParserBinOp, BinaryOperator};
+use sqlparser::ast::{Expr as SqlParserExpr, Value, BinaryOperator as SqlParserBinOp, BinaryOperator, Assignment as SqlParserAssignment};
 use std::num::ParseIntError;
 use crate::statement::Expr::BinaryExpr;
 
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct Assignment {
-    var: String,
-    val: BongoDataType,
+    pub(crate) varname: String,
+    pub(crate) val: BongoDataType,
+}
+
+impl TryFrom<SqlParserAssignment> for Assignment {
+    type Error = ();
+
+    fn try_from(parser_assignment: SqlParserAssignment) -> Result<Self, Self::Error> {
+        if parser_assignment.id.len() != 1 {
+            // only single identifiers supported
+            return Err(());
+        }
+
+        let expr = Expr::try_from(parser_assignment.value)?;
+
+        return match expr {
+            // only values are supported in assignments
+            Expr::Value(val) => {
+                Ok(
+                    Self {
+                        varname: String::from(&parser_assignment.id[0].value),
+                        val: BongoDataType::Null,
+                    })
+            }
+            _ => { Err(()) }
+        };
+    }
 }
 
 #[derive(Debug)]
@@ -70,7 +95,6 @@ pub enum Expr {
     Identifier(String),
     Value(BongoDataType),
 }
-
 
 impl TryFrom<SqlParserExpr> for Expr {
     type Error = ();

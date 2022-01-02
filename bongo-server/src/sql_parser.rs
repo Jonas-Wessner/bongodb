@@ -2,8 +2,8 @@ pub struct SqlParser {}
 
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
-use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr, ObjectName, Ident};
-use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp};
+use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr, ObjectName, Ident, Assignment};
+use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp, Assignment as BongoAssignment};
 use std::fmt;
 use std::ascii::escape_default;
 use std::convert::TryFrom;
@@ -25,7 +25,9 @@ fn unsupported_feature_err<T>(err_message: &str) -> Result<T, String> {
 
 
 fn only_single_table_from_err<T>() -> Result<T, String> {
-    unsupported_feature_err("Only single identifiers are supported in the FROM clause. Example: Select col_1 FROM table_1")
+    unsupported_feature_err("Only single identifiers are supported in a list of tables \
+    i.e. multiple tables are not supported. Example 1: Select col_1 FROM table_1; Example 2: \
+    UPDATE table_name SET col_1 = 5;")
 }
 
 fn order_by_only_one_column_err<T>() -> Result<T, String> {
@@ -63,7 +65,7 @@ impl SqlParser {
         return match ast {
             Ast::Query(query) => { Self::query_to_statement(*query) }
             Ast::Insert { .. } => { Self::insert_to_statement(ast) }
-            Ast::Update { .. } => { Err(String::from("not yet implemented")) }
+            Ast::Update { .. } => { Err(format!("{:?}", ast)) }
             Ast::Delete { .. } => { Err(String::from("not yet implemented")) }
             Ast::CreateTable { .. } => { Err(String::from("not yet implemented")) }
             Ast::Drop { .. } => { Err(String::from("not yet implemented")) }
@@ -79,7 +81,7 @@ impl SqlParser {
                         cols: Self::select_extract_cols(&select)?,
                         table: Self::select_extract_table(&select)?,
                         order: Self::select_extract_order(&query.order_by)?,
-                        condition: Self::select_extract_condition(*select)?,
+                        condition: Self::opt_bongo_expr_from_opt_expr(select.selection)?,
                     })
             }
             _ => {
@@ -136,38 +138,11 @@ impl SqlParser {
 
     fn select_extract_table(select: &Select) -> Result<String, String> {
         let tables_with_joins: &Vec<TableWithJoins> = &select.from;
-
         if tables_with_joins.len() != 1 {
             return only_single_table_from_err();
         }
-        let table_factor: &TableFactor = &tables_with_joins[0].relation;
 
-        return match &table_factor {
-            TableFactor::Table { name, .. } => {
-                if name.0.len() != 1 {
-                    return only_single_table_from_err();
-                }
-
-                Ok(String::from(&name.0[0].value))
-            }
-            _ => {
-                only_single_table_from_err()
-            }
-        };
-    }
-
-    fn select_extract_condition(select: Select) -> Result<Option<BongoExpr>, String> {
-        return match select.selection {
-            Some(cond) => {
-                match BongoExpr::try_from(cond) {
-                    Ok(bongo_expr) => { Ok(Some(bongo_expr)) }
-                    Err(_) => { unsupported_feature_err("This type of expression is not supported in a WHERE clause by BongoDB.") }
-                }
-            }
-            None => {
-                Ok(None)
-            }
-        };
+        Self::table_name_from_table_with_joins(&tables_with_joins[0])
     }
 
     fn select_extract_order(order_by_exprs: &Vec<OrderByExpr>) -> Result<Option<Order>, String> {
@@ -271,6 +246,73 @@ impl SqlParser {
             }
         };
     }
+
+    fn update_to_statement(update: Ast) -> Result<Statement, String> {
+        return match update {
+            Ast::Update { table, selection, assignments } => {
+                Ok(Statement::Update {
+                    table: Self::table_name_from_table_with_joins(&table)?,
+                    assignments: Self::bongo_assignment_from_assignments(assignments)?,
+                    condition: Self::opt_bongo_expr_from_opt_expr(selection)?,
+                })
+            }
+            _ => { internal_error("update_to_statement should only be called with the Update variant.") }
+        };
+    }
+
+    fn table_name_from_table_with_joins(table_with_joins: &TableWithJoins) -> Result<String, String> {
+        let table_factor: &TableFactor = &table_with_joins.relation;
+
+        return match &table_factor {
+            TableFactor::Table { name, .. } => {
+                if name.0.len() != 1 {
+                    return only_single_table_from_err();
+                }
+
+                Ok(String::from(&name.0[0].value))
+            }
+            _ => {
+                only_single_table_from_err()
+            }
+        };
+    }
+
+    fn opt_bongo_expr_from_opt_expr(expr: Option<Expr>) -> Result<Option<BongoExpr>, String> {
+        return match expr {
+            Some(cond) => {
+                match BongoExpr::try_from(cond) {
+                    Ok(bongo_expr) => { Ok(Some(bongo_expr)) }
+                    Err(_) => { unsupported_feature_err("This type of expression is not supported in a WHERE clause by BongoDB.") }
+                }
+            }
+            None => {
+                Ok(None)
+            }
+        };
+    }
+
+    fn bongo_assignment_from_assignments(assignments: Vec<Assignment>) -> Result<Vec<BongoAssignment>, String> {
+        let mut ok = false;
+        let bongo_assignments = assignments.into_iter()
+            .map(|assignment| {
+                return match BongoAssignment::try_from(assignment) {
+                    Ok(bongo_assignment) => { bongo_assignment }
+                    Err(_) => {
+                        // set flag to false and return placeholder for syntactic correctness
+                        ok = false;
+                        BongoAssignment { varname: "".to_string(), val: BongoDataType::Null }
+                    }
+                };
+            }).collect();
+
+        return if ok {
+            Ok(bongo_assignments)
+        } else {
+            unsupported_feature_err("This type of assignment is not supported by BongoDB. \
+            BongoDB only supports assignments where the left hand side operand is a column name and \
+            the right hand side operator is a literal.")
+        };
+    }
 }
 
 #[cfg(test)]
@@ -365,6 +407,36 @@ mod tests {
             };
 
             assert_eq!(statement, Ok(expected_statement));
+        }
+    }
+
+    mod update {
+        use crate::sql_parser::SqlParser;
+        use crate::statement::{Statement, Assignment};
+        use crate::types::BongoDataType;
+
+        #[test]
+        fn update_multiple_cols() {
+            let sql = r#"UPDATE table_1
+            SET col_1 = 2
+                col_2 = 'new_value;'"#;
+
+            let statement = SqlParser::parse(sql);
+
+            let expected_statement = Statement::Update {
+                table: "table_1".to_string(),
+                assignments: vec![
+                    Assignment {
+                        varname: "col_1".to_string(),
+                        val: BongoDataType::Int(2),
+                    },
+                    Assignment {
+                        varname: "col_2".to_string(),
+                        val: BongoDataType::Varchar("new_value".to_string(), "new_value".len()),
+                    }
+                ],
+                condition: None,
+            };
         }
     }
 }

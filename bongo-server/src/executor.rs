@@ -12,12 +12,12 @@ impl Executor {
     }
 
     pub fn execute(&self, request: &BongoRequest) -> BongoResponse {
-        match SqlParser::parse(&request.sql) {
+        return match SqlParser::parse(&request.sql) {
             Ok(statement) => {
-                println!("statement: {:?}", statement);
+                println!("sql has been parsed with the following resulting statement: {:?}", statement);
 
                 //  return an example BongoResponse
-                return BongoResponse::Success(Some(vec![
+                BongoResponse::Success(Some(vec![
                     vec![
                         BongoDataType::Int(1),
                         BongoDataType::Varchar(String::from("Marc"), "Marc".len()),
@@ -28,12 +28,12 @@ impl Executor {
                         BongoDataType::Varchar(String::from("Garry"), "Garry".len()),
                         BongoDataType::Bool(false)
                     ]
-                ]));
+                ]))
             }
             Err(m) => {
                 let message = format!("error parsing request with message {}", m);
                 println!("{}", message);
-                return BongoResponse::Error(message);
+                BongoResponse::Error(message)
             }
         }
     }
