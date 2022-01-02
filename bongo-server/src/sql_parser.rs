@@ -7,7 +7,7 @@ use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as 
 use std::fmt;
 use std::ascii::escape_default;
 use std::convert::TryFrom;
-use crate::types::{Row, BongoDataType};
+use crate::types::{Row, BongoLiteral};
 use crate::statement::Expr::Value;
 
 fn syntax_error<T>(err_message: &str) -> Result<T, String> {
@@ -48,6 +48,8 @@ impl SqlParser {
 
         let parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
 
+        println!("{:?}", parse_result);
+
         return match parse_result {
             Ok(mut stmts) => {
                 // move element out of vector for later use, as the vector is not used anyways
@@ -69,9 +71,14 @@ impl SqlParser {
             Ast::Insert { .. } => { Self::insert_to_statement(ast) }
             Ast::Update { .. } => { Self::update_to_statement(ast) }
             Ast::Delete { .. } => { Self::delete_to_statement(ast) }
-            Ast::CreateTable { .. } => { Err(String::from("not yet implemented")) }
+            Ast::CreateDatabase { mut db_name, .. } => { Self::obj_name_to_create_db(&mut db_name) }
+            Ast::CreateTable { .. } => { Err(String::from(format!("{:?}", ast))) }
             Ast::Drop { .. } => { Err(String::from("not yet implemented")) }
-            _ => { unsupported_feature_err("Only the following statements are supported by BongoDB: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, CREATE DATABASE, DROP TABLE, DROP DATABASE.") }
+            _ => {
+                unsupported_feature_err("Only the following statements are supported \
+            by BongoDB: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, CREATE DATABASE, DROP TABLE, \
+            DROP DATABASE.")
+            }
         };
     }
 
@@ -303,7 +310,7 @@ impl SqlParser {
                     Err(_) => {
                         // set flag to false and return placeholder for syntactic correctness
                         ok = false;
-                        BongoAssignment { varname: "".to_string(), val: BongoDataType::Null }
+                        BongoAssignment { varname: "".to_string(), val: BongoLiteral::Null }
                     }
                 };
             }).collect();
@@ -317,26 +324,38 @@ impl SqlParser {
         };
     }
 
+    fn string_from_obj_name(obj_name: &mut ObjectName, err_case_message: &str) -> Result<String, String> {
+        if obj_name.0.len() != 1 {
+            // TODO: change this to an appropriate error type
+            return Err(String::from(err_case_message));
+        }
+
+        Ok(String::from(obj_name.0.remove(0).value))
+    }
+
     fn delete_to_statement(delete: Ast) -> Result<Statement, String> {
         return match delete {
-            Ast::Delete { selection, table_name } => {
-                if table_name.0.len() != 1 {
-                    return syntax_error("Delete clauses must specify exactly one statement")
-                }
+            Ast::Delete { selection, mut table_name } => {
                 Ok(
                     Statement::Delete {
-                    table: String::from(&table_name.0[0].value),
-                    condition: Self::opt_bongo_expr_from_opt_expr(selection)?,
-                })
+                        table: Self::string_from_obj_name(&mut table_name, "DELETE statements must specify exactly one table.")?,
+                        condition: Self::opt_bongo_expr_from_opt_expr(selection)?,
+                    })
             }
-            _ => { internal_error("delete_to_statement should only be called with the Delete variant.") }
+            _ => { internal_error("CREATE DATABASE statements must specify exactly one database name.") }
         };
+    }
+
+    fn obj_name_to_create_db(obj_name: &mut ObjectName) -> Result<Statement, String> {
+        println!("{:?}", obj_name);
+        Ok(Statement::CreateDB { table: Self::string_from_obj_name(obj_name, "Exacly on ")? })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::statement::Statement;
+    use sqlparser::ast::ObjectName;
 
     mod select {
         use sqlparser::ast::{Expr, Ident, BinaryOperator};
@@ -347,7 +366,7 @@ mod tests {
         use crate::sql_parser::SqlParser;
         use crate::statement::{Statement, SelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp};
         use crate::statement::SelectItem::Wildcard;
-        use crate::types::BongoDataType;
+        use crate::types::BongoLiteral;
 
         #[test]
         fn all_features_together() {
@@ -374,7 +393,7 @@ mod tests {
                     right: Box::new(BongoExpr::BinaryExpr {
                         left: Box::new(BongoExpr::Identifier(String::from("b"))),
                         op: BongoBinOp::LtEq,
-                        right: Box::new(BongoExpr::Value(BongoDataType::Int(100))),
+                        right: Box::new(BongoExpr::Value(BongoLiteral::Int(100))),
                     }),
                 }),
             };
@@ -406,7 +425,7 @@ mod tests {
     mod insert {
         use crate::sql_parser::SqlParser;
         use crate::statement::Statement;
-        use crate::types::BongoDataType;
+        use crate::types::BongoLiteral;
 
         #[test]
         fn insert_multiple() {
@@ -421,9 +440,9 @@ mod tests {
                 table: "table_1".to_string(),
                 cols: vec!["col_1".to_string(), "col_2".to_string(), "col_3".to_string()],
                 rows: vec![
-                    vec![BongoDataType::Int(1), BongoDataType::Varchar("a".to_string(), "a".len()), BongoDataType::Bool(true)],
-                    vec![BongoDataType::Int(2), BongoDataType::Varchar("b".to_string(), "b".len()), BongoDataType::Bool(false)],
-                    vec![BongoDataType::Int(3), BongoDataType::Varchar("c".to_string(), "a".len()), BongoDataType::Null]
+                    vec![BongoLiteral::Int(1), BongoLiteral::Varchar("a".to_string(), "a".len()), BongoLiteral::Bool(true)],
+                    vec![BongoLiteral::Int(2), BongoLiteral::Varchar("b".to_string(), "b".len()), BongoLiteral::Bool(false)],
+                    vec![BongoLiteral::Int(3), BongoLiteral::Varchar("c".to_string(), "a".len()), BongoLiteral::Null]
                 ],
             };
 
@@ -434,7 +453,7 @@ mod tests {
     mod update {
         use crate::sql_parser::SqlParser;
         use crate::statement::{Statement, Assignment};
-        use crate::types::BongoDataType;
+        use crate::types::BongoLiteral;
 
         #[test]
         fn multiple_set_expr() {
@@ -449,11 +468,11 @@ mod tests {
                 assignments: vec![
                     Assignment {
                         varname: "col_1".to_string(),
-                        val: BongoDataType::Int(2),
+                        val: BongoLiteral::Int(2),
                     },
                     Assignment {
                         varname: "col_2".to_string(),
-                        val: BongoDataType::Varchar("new_value".to_string(), "new_value".len()),
+                        val: BongoLiteral::Varchar("new_value".to_string(), "new_value".len()),
                     }
                 ],
                 condition: None,
@@ -466,7 +485,7 @@ mod tests {
     mod delete {
         use crate::sql_parser::SqlParser;
         use crate::statement::{Statement, Expr as BongoExpr, BinOp as BongoBinOp};
-        use crate::types::{BongoDataType};
+        use crate::types::{BongoLiteral};
 
         #[test]
         fn nested_condition() {
@@ -487,7 +506,7 @@ mod tests {
                     right: Box::new(BongoExpr::BinaryExpr {
                         left: Box::new(BongoExpr::Identifier(String::from("c"))),
                         op: BongoBinOp::Eq,
-                        right: Box::new(BongoExpr::Value(BongoDataType::Bool(false))),
+                        right: Box::new(BongoExpr::Value(BongoLiteral::Bool(false))),
                     }),
                 }),
             };
@@ -501,14 +520,14 @@ mod tests {
         use crate::sql_parser::SqlParser;
 
         #[test]
+        #[ignore]
         fn create_db() {
-            // TODO: add sql for test
-            let sql = r#""#;
+            // NOTE: This statement seems not to be parsed correctly by the library, therefore we ignore that test.
+            let sql = "CREATE DATABASE db_1;";
 
             let statement = SqlParser::parse(sql);
 
-            // TODO: define correct expected statement
-            let expected_statement = Statement::CreateDB { table: "".to_string() };
+            let expected_statement = Statement::CreateDB { table: "db_1".to_string() };
 
             assert_eq!(statement, Ok(expected_statement));
         }
@@ -517,17 +536,26 @@ mod tests {
     mod create_table {
         use crate::sql_parser::SqlParser;
         use crate::statement::Statement;
+        use crate::types::{Column, BongoDataType};
 
+        #[test]
         fn create_table() {
-            // TODO: add sql for test
-            let sql = r#""#;
+            let sql = "CREATE TABLE table_1 \
+                                ( \
+                                    col_1 INT, \
+                                    col_2 BOOL, \
+                                    col_3 VARCHAR(256), \
+                                ); ";
 
             let statement = SqlParser::parse(sql);
 
-            // TODO: define correct expected statement
             let expected_statement = Statement::CreateTable {
-                table: "".to_string(),
-                cols: vec![],
+                table: "table_1".to_string(),
+                cols: vec![
+                    Column { name: "col_1".to_string(), data_type: BongoDataType::Int },
+                    Column { name: "col_2".to_string(), data_type: BongoDataType::Bool },
+                    Column { name: "col_3".to_string(), data_type: BongoDataType::Varchar(256) },
+                ],
             };
 
             assert_eq!(statement, Ok(expected_statement));

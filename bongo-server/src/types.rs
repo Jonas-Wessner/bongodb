@@ -9,20 +9,28 @@ use crate::serialize::Serialize;
 ///
 #[derive(Debug)]
 #[derive(PartialEq)]
-pub enum BongoDataType {
+pub enum BongoLiteral {
     Int(i64),
     Bool(bool),
     Varchar(String, usize),
     Null
 }
 
+#[derive(Debug)]
+#[derive(PartialEq)]
+pub enum BongoDataType {
+    Int,
+    Bool,
+    Varchar(usize),
+}
 
-impl Serialize for BongoDataType {
+
+impl Serialize for BongoLiteral {
     fn serialize(&self) -> String {
         return match self {
-            BongoDataType::Int(val) => { val.to_string() }
-            BongoDataType::Bool(val) => { val.to_string() }
-            BongoDataType::Varchar(val, _size) => { format!(r#""{}""#, val) }
+            BongoLiteral::Int(val) => { val.to_string() }
+            BongoLiteral::Bool(val) => { val.to_string() }
+            BongoLiteral::Varchar(val, _size) => { format!(r#""{}""#, val) }
             _ => {"NULL".to_string()}
         };
     }
@@ -32,15 +40,15 @@ impl Serialize for BongoDataType {
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct Column {
-    name: String,
-    data_type: BongoDataType,
+    pub(crate) name: String,
+    pub(crate) data_type: BongoDataType,
 }
 
 
 ///
 /// `Row` represents one row that is returned in a `BongoResponse::Success` variant.
 ///
-pub(crate) type Row = Vec<BongoDataType>;
+pub(crate) type Row = Vec<BongoLiteral>;
 
 
 ///

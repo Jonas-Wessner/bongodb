@@ -1,7 +1,7 @@
 use crate::bongo_response::{BongoResponse};
 use crate::bongo_request::BongoRequest;
 use crate::sql_parser::SqlParser;
-use crate::types::BongoDataType;
+use crate::types::BongoLiteral;
 
 pub struct Executor {}
 
@@ -19,14 +19,14 @@ impl Executor {
                 //  return an example BongoResponse
                 BongoResponse::Success(Some(vec![
                     vec![
-                        BongoDataType::Int(1),
-                        BongoDataType::Varchar(String::from("Marc"), "Marc".len()),
-                        BongoDataType::Bool(true)
+                        BongoLiteral::Int(1),
+                        BongoLiteral::Varchar(String::from("Marc"), "Marc".len()),
+                        BongoLiteral::Bool(true)
                     ],
                     vec![
-                        BongoDataType::Int(2),
-                        BongoDataType::Varchar(String::from("Garry"), "Garry".len()),
-                        BongoDataType::Bool(false)
+                        BongoLiteral::Int(2),
+                        BongoLiteral::Varchar(String::from("Garry"), "Garry".len()),
+                        BongoLiteral::Bool(false)
                     ]
                 ]))
             }

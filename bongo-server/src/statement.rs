@@ -1,4 +1,4 @@
-use crate::types::{BongoDataType, Column, Row};
+use crate::types::{BongoLiteral, Column, Row};
 use std::convert::TryFrom;
 use sqlparser::ast::{Expr as SqlParserExpr, Value, BinaryOperator as SqlParserBinOp, BinaryOperator, Assignment as SqlParserAssignment};
 use std::num::ParseIntError;
@@ -8,7 +8,7 @@ use crate::statement::Expr::BinaryExpr;
 #[derive(PartialEq)]
 pub struct Assignment {
     pub varname: String,
-    pub val: BongoDataType,
+    pub val: BongoLiteral,
 }
 
 impl TryFrom<SqlParserAssignment> for Assignment {
@@ -93,7 +93,7 @@ pub enum Expr {
         right: Box<Expr>,
     },
     Identifier(String),
-    Value(BongoDataType),
+    Value(BongoLiteral),
 }
 
 impl TryFrom<SqlParserExpr> for Expr {
@@ -106,14 +106,14 @@ impl TryFrom<SqlParserExpr> for Expr {
                 return match value {
                     Value::Number(lit, ..) => {
                         match str::parse::<i64>(&lit) {
-                            Ok(val) => { Ok(Expr::Value(BongoDataType::Int(val))) }
+                            Ok(val) => { Ok(Expr::Value(BongoLiteral::Int(val))) }
                             Err(_) => { Err(()) }
                         }
                     }
                     Value::SingleQuotedString(lit) | Value::DoubleQuotedString(lit) =>
-                        { Ok(Expr::Value(BongoDataType::Varchar(String::from(&lit), lit.len()))) }
-                    Value::Boolean(val) => { Ok(Expr::Value(BongoDataType::Bool(val))) }
-                    Value::Null => { Ok(Expr::Value(BongoDataType::Null)) }
+                        { Ok(Expr::Value(BongoLiteral::Varchar(String::from(&lit), lit.len()))) }
+                    Value::Boolean(val) => { Ok(Expr::Value(BongoLiteral::Bool(val))) }
+                    Value::Null => { Ok(Expr::Value(BongoLiteral::Null)) }
                     _ => { Err(()) }
                 };
             }
