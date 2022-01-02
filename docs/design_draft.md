@@ -34,6 +34,7 @@
                 - i64
                 - bool
                 - varchar
+                - Null
             - for later:
                 - u64
                 - f64

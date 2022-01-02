@@ -13,6 +13,7 @@ pub enum BongoDataType {
     Int(i64),
     Bool(bool),
     Varchar(String, usize),
+    Null
 }
 
 
@@ -22,6 +23,7 @@ impl Serialize for BongoDataType {
             BongoDataType::Int(val) => { val.to_string() }
             BongoDataType::Bool(val) => { val.to_string() }
             BongoDataType::Varchar(val, _size) => { format!(r#""{}""#, val) }
+            _ => {"NULL".to_string()}
         };
     }
 }

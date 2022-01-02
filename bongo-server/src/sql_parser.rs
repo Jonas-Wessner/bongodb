@@ -3,9 +3,10 @@ pub struct SqlParser {}
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr};
-use crate::statement::{Statement, SelectItem as BongoSelectItem, Order};
+use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp};
 use std::fmt;
 use std::ascii::escape_default;
+use std::convert::TryFrom;
 
 fn unsupported_feature_err<T>(err_message: &str) -> Result<T, String> {
     Err(String::from("Unsupported Feature: ") + err_message)
@@ -20,8 +21,6 @@ fn order_by_only_one_column_err<T>() -> Result<T, String> {
 }
 
 // TODO: return appropriate errors on all unsafe accesses such as absolute vector indexers
-
-// TODO: Implement custom Expr that uses the BongoDataType instead of the Value type from the sqlparser library
 
 impl SqlParser {
     pub fn parse(sql: &str) -> Result<Statement, String> {
@@ -141,44 +140,17 @@ impl SqlParser {
         };
     }
 
-    fn extract_select_condition(select: Select) -> Result<Option<Expr>, String> {
-        return match &select.selection {
+    fn extract_select_condition(select: Select) -> Result<Option<BongoExpr>, String> {
+        return match select.selection {
             Some(cond) => {
-                if !Self::expr_is_supported_where(&cond) {
-                    return unsupported_feature_err("This type of expression is not supported in a WHERE clause by BongoDB.");
+                match BongoExpr::try_from(cond) {
+                    Ok(bongo_expr) => { Ok(Some(bongo_expr)) }
+                    Err(_) => { unsupported_feature_err("This type of expression is not supported in a WHERE clause by BongoDB.") }
                 }
-                Ok(select.selection)
             }
             None => {
                 Ok(None)
             }
-        };
-    }
-
-    // Checks recursively if an expression is supported in WHERE clauses by BongoDB
-    fn expr_is_supported_where(expr: &Expr) -> bool {
-        return match expr {
-            // only binary operators, identifiers and values are supported
-            Expr::Identifier(_) | Expr::Value(_) => { true }
-            Expr::BinaryOp { op, left, right } => {
-                match op {
-                    BinaryOperator::Gt |
-                    BinaryOperator::Lt |
-                    BinaryOperator::GtEq |
-                    BinaryOperator::LtEq |
-                    BinaryOperator::Eq |
-                    BinaryOperator::NotEq |
-                    BinaryOperator::And |
-                    BinaryOperator::Or => {
-                        // each operand of a binary operation must also itself be a supported expression
-                        Self::expr_is_supported_where(left) && Self::expr_is_supported_where(right)
-                    }
-                    _ => {
-                        return false;
-                    }
-                }
-            }
-            _ => { false }
         };
     }
 
@@ -230,18 +202,19 @@ impl SqlParser {
 #[cfg(test)]
 mod tests {
     use super::SqlParser;
-    use crate::statement::{Statement, SelectItem, Order};
+    use crate::statement::{Statement, SelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp};
     use sqlparser::ast::{Expr, Ident, BinaryOperator};
     use sqlparser::ast::Expr::{BinaryOp, Identifier, Value};
     use sqlparser::tokenizer::Token::Number;
     use sqlparser::ast::Value as ValueEnum;
     use crate::statement::SelectItem::Wildcard;
+    use crate::types::BongoDataType;
 
     #[test]
     fn select_all_features_together() {
         let sql = "SELECT *, col_1, col_2 \
            FROM table_1 \
-           WHERE a > b AND b < 100 \
+           WHERE a > b AND b <= 100 \
            ORDER BY col_1 ASC";
 
         let expected_statement = Statement::Select {
@@ -252,41 +225,20 @@ mod tests {
             ],
             table: String::from("table_1"),
             order: Some(Order::Asc(String::from("col_1"))),
-            condition: Some(
-                Expr::BinaryOp {
-                    left: Box::new(BinaryOp {
-                        left: Box::new(Identifier(Ident {
-                            value: String::from("a"),
-                            quote_style: None,
-                        })),
-                        op: BinaryOperator::Gt,
-                        right: Box::new(Identifier(Ident {
-                            value: (String::from("b")),
-                            quote_style: None,
-                        })),
-                    }),
-                    op: BinaryOperator::And,
-                    right: Box::new(BinaryOp {
-                        left: Box::new(Identifier(Ident {
-                            value: String::from("b"),
-                            quote_style: None,
-                        })),
-                        op: BinaryOperator::Lt,
-                        right: Box::new(Value(ValueEnum::Number(String::from("100"), false))),
-                    }),
-                }
-            ),
+            condition: Some(BongoExpr::BinaryExpr {
+                left: Box::new(BongoExpr::BinaryExpr {
+                    left: Box::new(BongoExpr::Identifier(String::from("a"))),
+                    op: BongoBinOp::Gt,
+                    right: Box::new((BongoExpr::Identifier(String::from("b")))),
+                }),
+                op: BongoBinOp::And,
+                right: Box::new(BongoExpr::BinaryExpr {
+                    left: Box::new(BongoExpr::Identifier(String::from("b"))),
+                    op: BongoBinOp::LtEq,
+                    right: Box::new(BongoExpr::Value(BongoDataType::Int(100))),
+                }),
+            }),
         };
-
-        //     op: BinaryOperator::And,
-        //     right: BinaryOp {
-        //         left: Identifier(Ident {
-        //             value: (String::from("b")),
-        //             quote_style: None,
-        //         }),
-        //         op: BinaryOperator::Lt,
-        //         right: Value(Value::Number(String::from("100"))),
-        //     })
 
         let statement = SqlParser::parse(sql);
 
@@ -305,7 +257,7 @@ mod tests {
             ],
             table: String::from("table_1"),
             condition: None,
-            order: None
+            order: None,
         };
 
         assert_eq!(statement, Ok(expected_statement));
