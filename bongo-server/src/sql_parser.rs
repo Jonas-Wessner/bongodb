@@ -201,66 +201,69 @@ impl SqlParser {
 
 #[cfg(test)]
 mod tests {
-    use super::SqlParser;
-    use crate::statement::{Statement, SelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp};
-    use sqlparser::ast::{Expr, Ident, BinaryOperator};
-    use sqlparser::ast::Expr::{BinaryOp, Identifier, Value};
-    use sqlparser::tokenizer::Token::Number;
-    use sqlparser::ast::Value as ValueEnum;
-    use crate::statement::SelectItem::Wildcard;
-    use crate::types::BongoDataType;
+    mod select {
+        use sqlparser::ast::{Expr, Ident, BinaryOperator};
+        use sqlparser::ast::Expr::{BinaryOp, Identifier, Value};
+        use sqlparser::tokenizer::Token::Number;
+        use sqlparser::ast::Value as ValueEnum;
 
-    #[test]
-    fn select_all_features_together() {
-        let sql = "SELECT *, col_1, col_2 \
+        use super::super::SqlParser;
+        use crate::statement::{Statement, SelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp};
+        use crate::statement::SelectItem::Wildcard;
+        use crate::types::BongoDataType;
+
+        #[test]
+        fn all_features_together() {
+            let sql = "SELECT *, col_1, col_2 \
            FROM table_1 \
            WHERE a > b AND b <= 100 \
            ORDER BY col_1 ASC";
 
-        let expected_statement = Statement::Select {
-            cols: vec![
-                SelectItem::Wildcard,
-                SelectItem::ColumnName(String::from("col_1")),
-                SelectItem::ColumnName(String::from("col_2"))
-            ],
-            table: String::from("table_1"),
-            order: Some(Order::Asc(String::from("col_1"))),
-            condition: Some(BongoExpr::BinaryExpr {
-                left: Box::new(BongoExpr::BinaryExpr {
-                    left: Box::new(BongoExpr::Identifier(String::from("a"))),
-                    op: BongoBinOp::Gt,
-                    right: Box::new((BongoExpr::Identifier(String::from("b")))),
+            let expected_statement = Statement::Select {
+                cols: vec![
+                    SelectItem::Wildcard,
+                    SelectItem::ColumnName(String::from("col_1")),
+                    SelectItem::ColumnName(String::from("col_2"))
+                ],
+                table: String::from("table_1"),
+                order: Some(Order::Asc(String::from("col_1"))),
+                condition: Some(BongoExpr::BinaryExpr {
+                    left: Box::new(BongoExpr::BinaryExpr {
+                        left: Box::new(BongoExpr::Identifier(String::from("a"))),
+                        op: BongoBinOp::Gt,
+                        right: Box::new((BongoExpr::Identifier(String::from("b")))),
+                    }),
+                    op: BongoBinOp::And,
+                    right: Box::new(BongoExpr::BinaryExpr {
+                        left: Box::new(BongoExpr::Identifier(String::from("b"))),
+                        op: BongoBinOp::LtEq,
+                        right: Box::new(BongoExpr::Value(BongoDataType::Int(100))),
+                    }),
                 }),
-                op: BongoBinOp::And,
-                right: Box::new(BongoExpr::BinaryExpr {
-                    left: Box::new(BongoExpr::Identifier(String::from("b"))),
-                    op: BongoBinOp::LtEq,
-                    right: Box::new(BongoExpr::Value(BongoDataType::Int(100))),
-                }),
-            }),
-        };
+            };
 
-        let statement = SqlParser::parse(sql);
+            let statement = SqlParser::parse(sql);
 
-        assert_eq!(statement, Ok(expected_statement));
-    }
+            assert_eq!(statement, Ok(expected_statement));
+        }
 
-    #[test]
-    fn select_simple_wildcard() {
-        let sql = "SELECT * FROM table_1;";
+        #[test]
+        fn simple_wildcard() {
+            let sql = "SELECT * FROM table_1;";
 
-        let statement = SqlParser::parse(sql);
+            let statement = SqlParser::parse(sql);
 
-        let expected_statement = Statement::Select {
-            cols: vec![
-                SelectItem::Wildcard
-            ],
-            table: String::from("table_1"),
-            condition: None,
-            order: None,
-        };
+            let expected_statement = Statement::Select {
+                cols: vec![
+                    SelectItem::Wildcard
+                ],
+                table: String::from("table_1"),
+                condition: None,
+                order: None,
+            };
 
-        assert_eq!(statement, Ok(expected_statement));
+            assert_eq!(statement, Ok(expected_statement));
+        }
     }
 }
 
