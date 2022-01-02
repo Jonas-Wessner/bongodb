@@ -416,7 +416,7 @@ mod tests {
         use crate::types::BongoDataType;
 
         #[test]
-        fn update_multiple_cols() {
+        fn multiple_set_expr() {
             let sql = r#"UPDATE table_1
             SET col_1 = 2
                 col_2 = 'new_value;'"#;
