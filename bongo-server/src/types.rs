@@ -1,9 +1,12 @@
 use duplicate::duplicate;
 
+use std::convert::TryFrom;
+use sqlparser::ast::{ColumnDef as SqlParserColDef, DataType};
+
 use crate::serialize::Serialize;
 
 ///
-/// `BongoDataType` represents all data types of BongoDB.
+/// `BongoLiteral` represents all literals supported by BongoDB.
 ///
 /// Each variant contains data that represents an instance of this datatype in Rust.
 ///
@@ -13,7 +16,18 @@ pub enum BongoLiteral {
     Int(i64),
     Bool(bool),
     Varchar(String, usize),
-    Null
+    Null,
+}
+
+impl Serialize for BongoLiteral {
+    fn serialize(&self) -> String {
+        return match self {
+            BongoLiteral::Int(val) => { val.to_string() }
+            BongoLiteral::Bool(val) => { val.to_string() }
+            BongoLiteral::Varchar(val, _size) => { format!(r#""{}""#, val) }
+            _ => { "NULL".to_string() }
+        };
+    }
 }
 
 #[derive(Debug)]
@@ -24,14 +38,24 @@ pub enum BongoDataType {
     Varchar(usize),
 }
 
+impl TryFrom<&DataType> for BongoDataType {
+    type Error = String;
 
-impl Serialize for BongoLiteral {
-    fn serialize(&self) -> String {
-        return match self {
-            BongoLiteral::Int(val) => { val.to_string() }
-            BongoLiteral::Bool(val) => { val.to_string() }
-            BongoLiteral::Varchar(val, _size) => { format!(r#""{}""#, val) }
-            _ => {"NULL".to_string()}
+    fn try_from(value: &DataType) -> Result<Self, Self::Error> {
+        return match value {
+            DataType::Varchar(opt_size) => {
+                return match opt_size {
+                    None => { Err(String::from("VARCHARs must have a size in BongoDB.")) }
+                    Some(size) => { Ok(BongoDataType::Varchar(*size as usize)) }
+                };
+            }
+            DataType::TinyInt(_) |
+            DataType::SmallInt(_) |
+            DataType::Int(_) => { Ok(BongoDataType::Int) }
+            DataType::Boolean => { Ok(BongoDataType::Bool) }
+            _ => {
+                Err(String::from("BongoDB only supports the datatypes INT, VARCHAR(n) and BOOLEAN."))
+            }
         };
     }
 }
@@ -39,9 +63,21 @@ impl Serialize for BongoLiteral {
 
 #[derive(Debug)]
 #[derive(PartialEq)]
-pub struct Column {
+pub struct ColumnDef {
     pub(crate) name: String,
     pub(crate) data_type: BongoDataType,
+}
+
+impl TryFrom<&SqlParserColDef> for ColumnDef {
+    type Error = String;
+
+    fn try_from(value: &SqlParserColDef) -> Result<Self, Self::Error> {
+        Ok(
+            ColumnDef {
+                name: String::from(&value.name.value),
+                data_type: BongoDataType::try_from(&value.data_type)?,
+            })
+    }
 }
 
 

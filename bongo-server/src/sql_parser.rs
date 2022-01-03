@@ -2,12 +2,12 @@ pub struct SqlParser {}
 
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
-use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr, ObjectName, Ident, Assignment};
+use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr, ObjectName, Ident, Assignment, ColumnDef, DataType};
 use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp, Assignment as BongoAssignment};
 use std::fmt;
 use std::ascii::escape_default;
 use std::convert::TryFrom;
-use crate::types::{Row, BongoLiteral};
+use crate::types::{Row, BongoLiteral, ColumnDef as BongoColDef, BongoDataType};
 use crate::statement::Expr::Value;
 
 fn syntax_error<T>(err_message: &str) -> Result<T, String> {
@@ -40,7 +40,7 @@ fn insert_list_only_literals<T>() -> Result<T, String> {
 
 // TODO: return appropriate errors on all unsafe accesses such as absolute vector indexers
 
-// TODO: create error classes
+// TODO: create error enums and put them to appropriate files. Appropriate means here in the file where they are first used in the hierarchy
 
 impl SqlParser {
     pub fn parse(sql: &str) -> Result<Statement, String> {
@@ -72,8 +72,8 @@ impl SqlParser {
             Ast::Update { .. } => { Self::update_to_statement(ast) }
             Ast::Delete { .. } => { Self::delete_to_statement(ast) }
             Ast::CreateDatabase { mut db_name, .. } => { Self::obj_name_to_create_db(&mut db_name) }
-            Ast::CreateTable { .. } => { Err(String::from(format!("{:?}", ast))) }
-            Ast::Drop { .. } => { Err(String::from("not yet implemented")) }
+            Ast::CreateTable { .. } => { Self::create_table_to_statement(ast) }
+            Ast::Drop { .. } => { Err(format!("{:?}", ast)) }
             _ => {
                 unsupported_feature_err("Only the following statements are supported \
             by BongoDB: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, CREATE DATABASE, DROP TABLE, \
@@ -324,10 +324,10 @@ impl SqlParser {
         };
     }
 
-    fn string_from_obj_name(obj_name: &mut ObjectName, err_case_message: &str) -> Result<String, String> {
+    fn string_from_obj_name(obj_name: &mut ObjectName) -> Result<String, String> {
         if obj_name.0.len() != 1 {
-            // TODO: change this to an appropriate error type
-            return Err(String::from(err_case_message));
+            return unsupported_feature_err("BongoDB does not support whitespaces in \
+            identifier names such as table names or column names");
         }
 
         Ok(String::from(obj_name.0.remove(0).value))
@@ -338,17 +338,51 @@ impl SqlParser {
             Ast::Delete { selection, mut table_name } => {
                 Ok(
                     Statement::Delete {
-                        table: Self::string_from_obj_name(&mut table_name, "DELETE statements must specify exactly one table.")?,
+                        table: Self::string_from_obj_name(&mut table_name)?,
                         condition: Self::opt_bongo_expr_from_opt_expr(selection)?,
                     })
             }
-            _ => { internal_error("CREATE DATABASE statements must specify exactly one database name.") }
+            _ => { internal_error("delete_to_statement should only be called with the Delete variant.") }
         };
     }
 
     fn obj_name_to_create_db(obj_name: &mut ObjectName) -> Result<Statement, String> {
         println!("{:?}", obj_name);
-        Ok(Statement::CreateDB { table: Self::string_from_obj_name(obj_name, "Exacly on ")? })
+        Ok(Statement::CreateDB { table: Self::string_from_obj_name(obj_name)? })
+    }
+
+    fn create_table_to_statement(create_table: Ast) -> Result<Statement, String> {
+        return match create_table {
+            Ast::CreateTable { mut name, mut columns, .. } => {
+                Ok(Statement::CreateTable {
+                    table: Self::string_from_obj_name(&mut name)?,
+                    cols: Self::vec_col_def_from_vec_col_def(&mut columns)?,
+                })
+            }
+            _ => { internal_error("create_table_to_statement should only be called with the CreateTable variant.") }
+        };
+    }
+
+    fn vec_col_def_from_vec_col_def(cols: &mut Vec<ColumnDef>) -> Result<Vec<BongoColDef>, String> {
+        let mut result_status = Ok(vec![]);
+        let bongo_col_defs = cols.into_iter()
+            .map(|col: &mut ColumnDef| -> BongoColDef {
+                match BongoColDef::try_from(&*col) {
+                    Ok(bongo_col_def) => { bongo_col_def }
+                    Err(message) => {
+                        result_status = Err(message);
+                        // return placeholder
+                        BongoColDef { name: "".to_string(), data_type: BongoDataType::Int }
+                    }
+                }
+            })
+            .collect();
+
+        return if result_status.is_ok() {
+            Ok(bongo_col_defs)
+        } else {
+            result_status
+        };
     }
 }
 
@@ -536,14 +570,14 @@ mod tests {
     mod create_table {
         use crate::sql_parser::SqlParser;
         use crate::statement::Statement;
-        use crate::types::{Column, BongoDataType};
+        use crate::types::{ColumnDef as BongoColDef, BongoDataType};
 
         #[test]
         fn create_table() {
             let sql = "CREATE TABLE table_1 \
                                 ( \
                                     col_1 INT, \
-                                    col_2 BOOL, \
+                                    col_2 BOOLEAN, \
                                     col_3 VARCHAR(256), \
                                 ); ";
 
@@ -552,9 +586,9 @@ mod tests {
             let expected_statement = Statement::CreateTable {
                 table: "table_1".to_string(),
                 cols: vec![
-                    Column { name: "col_1".to_string(), data_type: BongoDataType::Int },
-                    Column { name: "col_2".to_string(), data_type: BongoDataType::Bool },
-                    Column { name: "col_3".to_string(), data_type: BongoDataType::Varchar(256) },
+                    BongoColDef { name: "col_1".to_string(), data_type: BongoDataType::Int },
+                    BongoColDef { name: "col_2".to_string(), data_type: BongoDataType::Bool },
+                    BongoColDef { name: "col_3".to_string(), data_type: BongoDataType::Varchar(256) },
                 ],
             };
 
@@ -568,13 +602,11 @@ mod tests {
 
         #[test]
         fn drop_db() {
-            // TODO: add sql for test
-            let sql = r#""#;
+            let sql = r#"DROP DATABASE db_1;"#;
 
             let statement = SqlParser::parse(sql);
 
-            // TODO: define correct expected statement
-            let expected_statement = Statement::DropDB { database: "".to_string() };
+            let expected_statement = Statement::DropDB { database: "db_1".to_string() };
 
             assert_eq!(statement, Ok(expected_statement));
         }

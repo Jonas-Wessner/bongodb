@@ -1,4 +1,4 @@
-use crate::types::{BongoLiteral, Column, Row};
+use crate::types::{BongoLiteral, ColumnDef, Row};
 use std::convert::TryFrom;
 use sqlparser::ast::{Expr as SqlParserExpr, Value, BinaryOperator as SqlParserBinOp, BinaryOperator, Assignment as SqlParserAssignment};
 use std::num::ParseIntError;
@@ -162,7 +162,7 @@ pub enum Statement {
     CreateDB { table: String },
     CreateTable {
         table: String,
-        cols: Vec<Column>,
+        cols: Vec<ColumnDef>,
     },
     DropTable { table: String },
     DropDB { database: String },
