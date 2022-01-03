@@ -159,11 +159,13 @@ pub enum Statement {
         table: String,
         condition: Option<Expr>,
     },
-    CreateDB { table: String },
     CreateTable {
         table: String,
         cols: Vec<ColumnDef>,
     },
-    DropTable { table: String },
+    DropTable { names: Vec<String> },
+    // NOTE: currently not supported, because BongoDB asserts having only exactly one DB
+    CreateDB { name: String },
+    // NOTE: currently not supported, because BongoDB asserts having only exactly one DB
     DropDB { database: String },
 }

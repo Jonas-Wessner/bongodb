@@ -2,7 +2,7 @@ pub struct SqlParser {}
 
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
-use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr, ObjectName, Ident, Assignment, ColumnDef, DataType};
+use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr, ObjectName, Ident, Assignment, ColumnDef, DataType, ObjectType};
 use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp, Assignment as BongoAssignment};
 use std::fmt;
 use std::ascii::escape_default;
@@ -42,6 +42,8 @@ fn insert_list_only_literals<T>() -> Result<T, String> {
 
 // TODO: create error enums and put them to appropriate files. Appropriate means here in the file where they are first used in the hierarchy
 
+// TODO: extract utility function that converts all elements of a vector with TryFrom trait
+
 impl SqlParser {
     pub fn parse(sql: &str) -> Result<Statement, String> {
         let dialect = GenericDialect {};
@@ -73,7 +75,7 @@ impl SqlParser {
             Ast::Delete { .. } => { Self::delete_to_statement(ast) }
             Ast::CreateDatabase { mut db_name, .. } => { Self::obj_name_to_create_db(&mut db_name) }
             Ast::CreateTable { .. } => { Self::create_table_to_statement(ast) }
-            Ast::Drop { .. } => { Err(format!("{:?}", ast)) }
+            Ast::Drop { .. } => { Self::drop_to_statement(ast) }
             _ => {
                 unsupported_feature_err("Only the following statements are supported \
             by BongoDB: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, CREATE DATABASE, DROP TABLE, \
@@ -347,8 +349,8 @@ impl SqlParser {
     }
 
     fn obj_name_to_create_db(obj_name: &mut ObjectName) -> Result<Statement, String> {
-        println!("{:?}", obj_name);
-        Ok(Statement::CreateDB { table: Self::string_from_obj_name(obj_name)? })
+        unsupported_feature_err("BongoDB does not support CREATE DATABASE statements, because only one database is supported.")
+        // Ok(Statement::CreateDB { table: Self::string_from_obj_name(obj_name)? })
     }
 
     fn create_table_to_statement(create_table: Ast) -> Result<Statement, String> {
@@ -365,9 +367,9 @@ impl SqlParser {
 
     fn vec_col_def_from_vec_col_def(cols: &mut Vec<ColumnDef>) -> Result<Vec<BongoColDef>, String> {
         let mut result_status = Ok(vec![]);
-        let bongo_col_defs = cols.into_iter()
-            .map(|col: &mut ColumnDef| -> BongoColDef {
-                match BongoColDef::try_from(&*col) {
+        let bongo_col_defs = cols.iter()
+            .map(|col: &ColumnDef| -> BongoColDef {
+                match BongoColDef::try_from(col) {
                     Ok(bongo_col_def) => { bongo_col_def }
                     Err(message) => {
                         result_status = Err(message);
@@ -383,6 +385,42 @@ impl SqlParser {
         } else {
             result_status
         };
+    }
+
+    fn drop_to_statement(drop: Ast) -> Result<Statement, String> {
+        return match drop {
+            Ast::Drop { object_type, names, .. } => {
+                match object_type {
+                    ObjectType::Table => {
+                        Ok(Statement::DropTable {
+                            names: Self::vec_string_from_vec_obj_names(names)?
+                        })
+                    }
+                    _ => { Err(String::from("BongoDB only supports DROP statements for TABLEs.")) }
+                }
+            }
+            _ => { internal_error("drop_to_statement should only be called with the Drop variant.") }
+        };
+    }
+
+    fn vec_string_from_vec_obj_names(obj_names: Vec<ObjectName>) -> Result<Vec<String>, String> {
+        let mut result_status = Ok(vec![]);
+
+        let names = obj_names.into_iter()
+            .map(|mut obj_name: ObjectName| -> String {
+                return match Self::string_from_obj_name(&mut obj_name) {
+                    Ok(name) => { name }
+                    Err(msg) => {
+                        result_status = Err(msg);
+                        "".to_string()
+                    }
+                };
+            }).collect();
+        return if result_status.is_ok() {
+            Ok(names)
+        } else {
+            result_status
+        }
     }
 }
 
@@ -549,23 +587,6 @@ mod tests {
         }
     }
 
-    mod create_db {
-        use crate::statement::Statement;
-        use crate::sql_parser::SqlParser;
-
-        #[test]
-        #[ignore]
-        fn create_db() {
-            // NOTE: This statement seems not to be parsed correctly by the library, therefore we ignore that test.
-            let sql = "CREATE DATABASE db_1;";
-
-            let statement = SqlParser::parse(sql);
-
-            let expected_statement = Statement::CreateDB { table: "db_1".to_string() };
-
-            assert_eq!(statement, Ok(expected_statement));
-        }
-    }
 
     mod create_table {
         use crate::sql_parser::SqlParser;
@@ -596,10 +617,33 @@ mod tests {
         }
     }
 
+
+    mod drop_table {
+        use crate::sql_parser::SqlParser;
+        use crate::statement::Statement;
+
+        #[test]
+        fn drop_table() {
+            let sql = "DROP TABLE table_1";
+
+            let statement = SqlParser::parse(sql);
+
+            let expected_statement = Statement::DropTable { names: vec!["table_1".to_string()] };
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+    }
+
     mod drop_db {
         use crate::sql_parser::SqlParser;
         use crate::statement::Statement;
 
+        ///
+        /// CREATE DB seems to not be properly processed by the used 3rd party library,
+        /// furthermore we assume in BongoDB that we only have one database which makes this
+        /// statement obsolete.
+        ///
+        #[ignore]
         #[test]
         fn drop_db() {
             let sql = r#"DROP DATABASE db_1;"#;
@@ -612,19 +656,23 @@ mod tests {
         }
     }
 
-    mod drop_table {
-        use crate::sql_parser::SqlParser;
+    mod create_db {
         use crate::statement::Statement;
+        use crate::sql_parser::SqlParser;
 
+        ///
+        /// CREATE DB seems to not be properly processed by the used 3rd party library,
+        /// furthermore we assume in BongoDB that we only have one database which makes this
+        /// statement obsolete.
+        ///
         #[test]
-        fn drop_table() {
-            // TODO: add sql for test
-            let sql = r#""#;
+        #[ignore]
+        fn create_db() {
+            let sql = "CREATE DATABASE db_1;";
 
             let statement = SqlParser::parse(sql);
 
-            // TODO: define correct expected statement
-            let expected_statement = Statement::DropTable { table: "".to_string() };
+            let expected_statement = Statement::CreateDB { name: "db_1".to_string() };
 
             assert_eq!(statement, Ok(expected_statement));
         }
