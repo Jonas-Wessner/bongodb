@@ -1,8 +1,6 @@
 use crate::types::{BongoLiteral, ColumnDef, Row, BongoError};
 use std::convert::TryFrom;
 use sqlparser::ast::{Expr as SqlParserExpr, Value, BinaryOperator as SqlParserBinOp, BinaryOperator, Assignment as SqlParserAssignment, SelectItem as SqlParserSelectItem, OrderByExpr};
-use std::num::ParseIntError;
-use crate::statement::Expr::BinaryExpr;
 
 #[derive(Debug)]
 #[derive(PartialEq)]

@@ -1,16 +1,12 @@
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
-use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr, ObjectName, Ident, Assignment, ColumnDef, DataType, ObjectType};
-use std::fmt;
-use std::ascii::escape_default;
+use sqlparser::ast::{Statement as Ast, Query, SetExpr, Expr, TableFactor, TableWithJoins, OrderByExpr, ObjectName, Ident, ColumnDef, ObjectType};
 use std::convert::TryFrom;
 
-use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp, Assignment as BongoAssignment};
-use crate::types::{Row, BongoLiteral, ColumnDef as BongoColDef, BongoDataType, BongoError};
-use crate::statement::Expr::Value;
+use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, Assignment as BongoAssignment};
+use crate::types::{Row, ColumnDef as BongoColDef, BongoError};
 use crate::sql_parser::err_messages::{*};
 use crate::util::conversions::{TryConvertAllExt, TryConvertOption};
-use crate::types::BongoError::UnsupportedFeatureError;
 
 
 pub struct SqlParser {}
@@ -201,17 +197,17 @@ impl SqlParser {
         };
     }
 
-    fn obj_name_to_create_db(obj_name: &mut ObjectName) -> Result<Statement, BongoError> {
+    fn obj_name_to_create_db(_obj_name: &mut ObjectName) -> Result<Statement, BongoError> {
         unsupported_feature_err("BongoDB does not support CREATE DATABASE statements, because only one database is supported.")
         // Ok(Statement::CreateDB { table: Self::string_from_obj_name(obj_name)? })
     }
 
     fn create_table_to_statement(create_table: Ast) -> Result<Statement, BongoError> {
         return match create_table {
-            Ast::CreateTable { mut name, mut columns, .. } => {
+            Ast::CreateTable { mut name, columns, .. } => {
                 Ok(Statement::CreateTable {
                     table: Self::string_from_obj_name(&mut name)?,
-                    cols: columns.try_convert_all(|mut col_def: ColumnDef| { BongoColDef::try_from(&col_def) })?,
+                    cols: columns.try_convert_all(|col_def: ColumnDef| { BongoColDef::try_from(&col_def) })?,
                     // cols: Self::vec_col_def_from_vec_col_def(&mut columns)?,
                 })
             }
