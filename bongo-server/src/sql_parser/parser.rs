@@ -1,46 +1,21 @@
-pub struct SqlParser {}
-
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::ast::{Statement as Ast, Query, SetExpr, SelectItem, Expr, Select, TableFactor, TableWithJoins, BinaryOperator, OrderByExpr, ObjectName, Ident, Assignment, ColumnDef, DataType, ObjectType};
-use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp, Assignment as BongoAssignment};
 use std::fmt;
 use std::ascii::escape_default;
 use std::convert::TryFrom;
+
+use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp, Assignment as BongoAssignment};
 use crate::types::{Row, BongoLiteral, ColumnDef as BongoColDef, BongoDataType, BongoError};
 use crate::statement::Expr::Value;
-
-fn syntax_error<T>(err_message: &str) -> Result<T, BongoError> {
-    Err(BongoError::SqlSyntaxError(String::from(err_message)))
-}
-
-fn internal_error<T>(err_message: &str) -> Result<T, BongoError> {
-    Err(BongoError::InternalError(String::from(err_message)))
-}
+use crate::sql_parser::err_messages::{*};
 
 
-fn unsupported_feature_err<T>(err_message: &str) -> Result<T, BongoError> {
-    Err(BongoError::UnsupportedFeatureError(String::from(err_message)))
-}
-
-
-fn only_single_table_from_err<T>() -> Result<T, BongoError> {
-    unsupported_feature_err("Only single identifiers are supported in a list of tables \
-    i.e. multiple tables are not supported. Example 1: Select col_1 FROM table_1; Example 2: \
-    UPDATE table_name SET col_1 = 5;")
-}
-
-fn order_by_only_one_column_err<T>() -> Result<T, BongoError> {
-    unsupported_feature_err("ORDER BY is only supported with exactly one argument which must be a column name.")
-}
-
-fn insert_list_only_literals<T>() -> Result<T, BongoError> {
-    syntax_error("Only literals can appear in VALUES lists of insert statements")
-}
-
-// TODO: return appropriate errors on all unsafe accesses such as absolute vector indexers
+pub struct SqlParser {}
 
 // TODO: extract utility function that converts all elements of a vector with TryFrom trait
+
+// TODO: documentation
 
 impl SqlParser {
     pub fn parse(sql: &str) -> Result<Statement, BongoError> {
@@ -116,7 +91,6 @@ impl SqlParser {
                     }
                 };
             }).collect::<Vec<Result<BongoSelectItem, BongoError>>>();
-
 
 
         let mut errors = items.iter()
@@ -365,13 +339,12 @@ impl SqlParser {
         let bongo_col_defs = cols.iter()
             .map(|col: &ColumnDef| -> BongoColDef {
                 match BongoColDef::try_from(col) {
-                    Ok(bongo_col_def) => { return bongo_col_def }
+                    Ok(bongo_col_def) => { return bongo_col_def; }
                     Err(err) => {
                         result_status = Err(err);
                         // return placeholder
                         BongoColDef { name: "".to_string(), data_type: BongoDataType::Int }
                     }
-
                 }
             })
             .collect();
@@ -431,7 +404,7 @@ mod tests {
         use sqlparser::tokenizer::Token::Number;
         use sqlparser::ast::Value as ValueEnum;
 
-        use crate::sql_parser::SqlParser;
+        use crate::sql_parser::parser::SqlParser;
         use crate::statement::{Statement, SelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp};
         use crate::statement::SelectItem::Wildcard;
         use crate::types::BongoLiteral;
@@ -491,7 +464,7 @@ mod tests {
     }
 
     mod insert {
-        use crate::sql_parser::SqlParser;
+        use super::super::SqlParser;
         use crate::statement::Statement;
         use crate::types::BongoLiteral;
 
@@ -519,7 +492,7 @@ mod tests {
     }
 
     mod update {
-        use crate::sql_parser::SqlParser;
+        use super::super::SqlParser;
         use crate::statement::{Statement, Assignment};
         use crate::types::BongoLiteral;
 
@@ -551,7 +524,7 @@ mod tests {
     }
 
     mod delete {
-        use crate::sql_parser::SqlParser;
+        use super::super::SqlParser;
         use crate::statement::{Statement, Expr as BongoExpr, BinOp as BongoBinOp};
         use crate::types::{BongoLiteral};
 
@@ -585,7 +558,7 @@ mod tests {
 
 
     mod create_table {
-        use crate::sql_parser::SqlParser;
+        use super::super::SqlParser;
         use crate::statement::Statement;
         use crate::types::{ColumnDef as BongoColDef, BongoDataType};
 
@@ -615,7 +588,7 @@ mod tests {
 
 
     mod drop_table {
-        use crate::sql_parser::SqlParser;
+        use super::super::SqlParser;
         use crate::statement::Statement;
 
         #[test]
@@ -631,7 +604,7 @@ mod tests {
     }
 
     mod drop_db {
-        use crate::sql_parser::SqlParser;
+        use super::super::SqlParser;
         use crate::statement::Statement;
 
         ///
@@ -654,7 +627,7 @@ mod tests {
 
     mod create_db {
         use crate::statement::Statement;
-        use crate::sql_parser::SqlParser;
+        use super::super::SqlParser;
 
         ///
         /// CREATE DB seems to not be properly processed by the used 3rd party library,

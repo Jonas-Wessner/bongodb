@@ -1,12 +1,11 @@
 #![feature(iter_intersperse)]
 
-mod sql_parser;
+pub mod sql_parser;
 mod statement;
 mod types;
 mod serialize;
 mod bongo_request;
 mod bongo_response;
-
 mod webserver;
 mod executor;
 

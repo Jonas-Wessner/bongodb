@@ -1,6 +1,6 @@
 use crate::bongo_response::{BongoResponse};
 use crate::bongo_request::BongoRequest;
-use crate::sql_parser::SqlParser;
+use crate::sql_parser::parser::SqlParser;
 use crate::types::BongoLiteral;
 
 pub struct Executor {}
