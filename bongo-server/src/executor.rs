@@ -30,8 +30,8 @@ impl Executor {
                     ]
                 ]))
             }
-            Err(m) => {
-                let message = format!("error parsing request with message {}", m);
+            Err(err) => {
+                let message = format!("error parsing request: {:?}", err);
                 println!("{}", message);
                 BongoResponse::Error(message)
             }

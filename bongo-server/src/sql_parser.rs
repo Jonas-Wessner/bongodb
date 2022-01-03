@@ -7,45 +7,43 @@ use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as 
 use std::fmt;
 use std::ascii::escape_default;
 use std::convert::TryFrom;
-use crate::types::{Row, BongoLiteral, ColumnDef as BongoColDef, BongoDataType};
+use crate::types::{Row, BongoLiteral, ColumnDef as BongoColDef, BongoDataType, BongoError};
 use crate::statement::Expr::Value;
 
-fn syntax_error<T>(err_message: &str) -> Result<T, String> {
-    Err(String::from("Syntax Error: ") + err_message)
+fn syntax_error<T>(err_message: &str) -> Result<T, BongoError> {
+    Err(BongoError::SqlSyntaxError(String::from(err_message)))
 }
 
-fn internal_error<T>(err_message: &str) -> Result<T, String> {
-    Err(String::from("Internal Error: ") + err_message)
-}
-
-
-fn unsupported_feature_err<T>(err_message: &str) -> Result<T, String> {
-    Err(String::from("Unsupported Feature: ") + err_message)
+fn internal_error<T>(err_message: &str) -> Result<T, BongoError> {
+    Err(BongoError::InternalError(String::from(err_message)))
 }
 
 
-fn only_single_table_from_err<T>() -> Result<T, String> {
+fn unsupported_feature_err<T>(err_message: &str) -> Result<T, BongoError> {
+    Err(BongoError::UnsupportedFeatureError(String::from(err_message)))
+}
+
+
+fn only_single_table_from_err<T>() -> Result<T, BongoError> {
     unsupported_feature_err("Only single identifiers are supported in a list of tables \
     i.e. multiple tables are not supported. Example 1: Select col_1 FROM table_1; Example 2: \
     UPDATE table_name SET col_1 = 5;")
 }
 
-fn order_by_only_one_column_err<T>() -> Result<T, String> {
+fn order_by_only_one_column_err<T>() -> Result<T, BongoError> {
     unsupported_feature_err("ORDER BY is only supported with exactly one argument which must be a column name.")
 }
 
-fn insert_list_only_literals<T>() -> Result<T, String> {
+fn insert_list_only_literals<T>() -> Result<T, BongoError> {
     syntax_error("Only literals can appear in VALUES lists of insert statements")
 }
 
 // TODO: return appropriate errors on all unsafe accesses such as absolute vector indexers
 
-// TODO: create error enums and put them to appropriate files. Appropriate means here in the file where they are first used in the hierarchy
-
 // TODO: extract utility function that converts all elements of a vector with TryFrom trait
 
 impl SqlParser {
-    pub fn parse(sql: &str) -> Result<Statement, String> {
+    pub fn parse(sql: &str) -> Result<Statement, BongoError> {
         let dialect = GenericDialect {};
 
         let parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
@@ -54,20 +52,15 @@ impl SqlParser {
 
         return match parse_result {
             Ok(mut stmts) => {
-                // move element out of vector for later use, as the vector is not used anyways
                 Self::ast_to_statement(stmts.remove(0))
             }
             Err(err) => {
-                match err {
-                    ParserError::TokenizerError(m) | ParserError::ParserError(m) => {
-                        Err(String::from(m))
-                    }
-                }
+                Err(BongoError::from(err))
             }
         };
     }
 
-    fn ast_to_statement(ast: Ast) -> Result<Statement, String> {
+    fn ast_to_statement(ast: Ast) -> Result<Statement, BongoError> {
         return match ast {
             Ast::Query(query) => { Self::query_to_statement(*query) }
             Ast::Insert { .. } => { Self::insert_to_statement(ast) }
@@ -84,7 +77,7 @@ impl SqlParser {
         };
     }
 
-    fn query_to_statement(query: Query) -> Result<Statement, String> {
+    fn query_to_statement(query: Query) -> Result<Statement, BongoError> {
         return match query.body {
             SetExpr::Select(select) => {
                 Ok(
@@ -101,9 +94,9 @@ impl SqlParser {
         };
     }
 
-    fn select_extract_cols(select: &Select) -> Result<Vec<BongoSelectItem>, String> {
-        let items: Vec<Result<BongoSelectItem, String>> = select.projection.iter()
-            .map(|item: &SelectItem| -> Result<BongoSelectItem, String> {
+    fn select_extract_cols(select: &Select) -> Result<Vec<BongoSelectItem>, BongoError> {
+        let items: Vec<Result<BongoSelectItem, BongoError>> = select.projection.iter()
+            .map(|item: &SelectItem| -> Result<BongoSelectItem, BongoError> {
                 return match item {
                     SelectItem::UnnamedExpr(expr) => {
                         match expr {
@@ -122,23 +115,25 @@ impl SqlParser {
                         unsupported_feature_err("Only unqualified Wildcards are supported. Example: `SELECT * FROM ...`")
                     }
                 };
-            }).collect::<Vec<Result<BongoSelectItem, String>>>();
+            }).collect::<Vec<Result<BongoSelectItem, BongoError>>>();
 
-        let errors = items.iter()
-            .filter_map(|result| -> Option<String> {
+
+
+        let mut errors = items.iter()
+            .filter_map(|result| -> Option<BongoError> {
                 return match result {
                     Ok(_) => {
                         None
                     }
                     Err(error) => {
-                        Some(String::from(error))
+                        Some(BongoError::UnsupportedFeatureError(String::from("RETURN ACTUAL UNDERLYING ERROR HERE")))
                     }
                 };
-            }).collect::<Vec<String>>();
+            }).collect::<Vec<BongoError>>();
 
         return if !errors.is_empty() {
             // return first error if errors exist
-            Err(String::from(&errors[0]))
+            Err(errors.remove(0))
         } else {
             Ok(items.into_iter()
                 .map(|item| -> BongoSelectItem {
@@ -147,7 +142,7 @@ impl SqlParser {
         };
     }
 
-    fn select_extract_table(select: &Select) -> Result<String, String> {
+    fn select_extract_table(select: &Select) -> Result<String, BongoError> {
         let tables_with_joins: &Vec<TableWithJoins> = &select.from;
         if tables_with_joins.len() != 1 {
             return only_single_table_from_err();
@@ -156,7 +151,7 @@ impl SqlParser {
         Self::table_name_from_table_with_joins(&tables_with_joins[0])
     }
 
-    fn select_extract_order(order_by_exprs: &Vec<OrderByExpr>) -> Result<Option<Order>, String> {
+    fn select_extract_order(order_by_exprs: &Vec<OrderByExpr>) -> Result<Option<Order>, BongoError> {
         if order_by_exprs.len() == 0 {
             return Ok(None);
         }
@@ -192,7 +187,7 @@ impl SqlParser {
         };
     }
 
-    fn insert_to_statement(insert: Ast) -> Result<Statement, String> {
+    fn insert_to_statement(insert: Ast) -> Result<Statement, BongoError> {
         return match insert {
             Ast::Insert { table_name, columns, source, .. } => {
                 Ok(
@@ -206,18 +201,18 @@ impl SqlParser {
         };
     }
 
-    fn insert_extract_table(obj_name: ObjectName) -> Result<String, String> {
+    fn insert_extract_table(obj_name: ObjectName) -> Result<String, BongoError> {
         if obj_name.0.len() == 0 {
-            return Err("Specifying more than one table on an INSERT statement is not valid.".to_string());
+            return syntax_error("Specifying no one table on an INSERT statement is not valid.");
         }
         if obj_name.0.len() > 1 {
-            return Err("Specifying more than one table on an INSERT statement is not valid.".to_string());
+            return syntax_error("Specifying more than one table on an INSERT statement is not valid.");
         }
 
         return Ok(String::from(&obj_name.0[0].value));
     }
 
-    fn insert_extract_cols(idents: Vec<Ident>) -> Result<Vec<String>, String> {
+    fn insert_extract_cols(idents: Vec<Ident>) -> Result<Vec<String>, BongoError> {
         if idents.is_empty() {
             return unsupported_feature_err("BongoDB does only support INSERT statements \
             with explicit column lists. Example: INSERT INTO table_1 (col_1, col_2) ..");
@@ -229,7 +224,7 @@ impl SqlParser {
         )
     }
 
-    fn insert_extract_rows(query: Query) -> Result<Vec<Row>, String> {
+    fn insert_extract_rows(query: Query) -> Result<Vec<Row>, BongoError> {
         return match query.body {
             SetExpr::Values(values) => {
                 values.0.into_iter()
@@ -258,7 +253,7 @@ impl SqlParser {
         };
     }
 
-    fn update_to_statement(update: Ast) -> Result<Statement, String> {
+    fn update_to_statement(update: Ast) -> Result<Statement, BongoError> {
         return match update {
             Ast::Update { table, selection, assignments } => {
                 Ok(Statement::Update {
@@ -271,7 +266,7 @@ impl SqlParser {
         };
     }
 
-    fn table_name_from_table_with_joins(table_with_joins: &TableWithJoins) -> Result<String, String> {
+    fn table_name_from_table_with_joins(table_with_joins: &TableWithJoins) -> Result<String, BongoError> {
         let table_factor: &TableFactor = &table_with_joins.relation;
 
         return match &table_factor {
@@ -288,7 +283,7 @@ impl SqlParser {
         };
     }
 
-    fn opt_bongo_expr_from_opt_expr(expr: Option<Expr>) -> Result<Option<BongoExpr>, String> {
+    fn opt_bongo_expr_from_opt_expr(expr: Option<Expr>) -> Result<Option<BongoExpr>, BongoError> {
         return match expr {
             Some(cond) => {
                 match BongoExpr::try_from(cond) {
@@ -302,7 +297,7 @@ impl SqlParser {
         };
     }
 
-    fn bongo_assignment_from_assignments(assignments: Vec<Assignment>) -> Result<Vec<BongoAssignment>, String> {
+    fn bongo_assignment_from_assignments(assignments: Vec<Assignment>) -> Result<Vec<BongoAssignment>, BongoError> {
         let mut ok = true;
 
         let bongo_assignments = assignments.into_iter()
@@ -326,7 +321,7 @@ impl SqlParser {
         };
     }
 
-    fn string_from_obj_name(obj_name: &mut ObjectName) -> Result<String, String> {
+    fn string_from_obj_name(obj_name: &mut ObjectName) -> Result<String, BongoError> {
         if obj_name.0.len() != 1 {
             return unsupported_feature_err("BongoDB does not support whitespaces in \
             identifier names such as table names or column names");
@@ -335,7 +330,7 @@ impl SqlParser {
         Ok(String::from(obj_name.0.remove(0).value))
     }
 
-    fn delete_to_statement(delete: Ast) -> Result<Statement, String> {
+    fn delete_to_statement(delete: Ast) -> Result<Statement, BongoError> {
         return match delete {
             Ast::Delete { selection, mut table_name } => {
                 Ok(
@@ -348,12 +343,12 @@ impl SqlParser {
         };
     }
 
-    fn obj_name_to_create_db(obj_name: &mut ObjectName) -> Result<Statement, String> {
+    fn obj_name_to_create_db(obj_name: &mut ObjectName) -> Result<Statement, BongoError> {
         unsupported_feature_err("BongoDB does not support CREATE DATABASE statements, because only one database is supported.")
         // Ok(Statement::CreateDB { table: Self::string_from_obj_name(obj_name)? })
     }
 
-    fn create_table_to_statement(create_table: Ast) -> Result<Statement, String> {
+    fn create_table_to_statement(create_table: Ast) -> Result<Statement, BongoError> {
         return match create_table {
             Ast::CreateTable { mut name, mut columns, .. } => {
                 Ok(Statement::CreateTable {
@@ -365,17 +360,18 @@ impl SqlParser {
         };
     }
 
-    fn vec_col_def_from_vec_col_def(cols: &mut Vec<ColumnDef>) -> Result<Vec<BongoColDef>, String> {
+    fn vec_col_def_from_vec_col_def(cols: &mut Vec<ColumnDef>) -> Result<Vec<BongoColDef>, BongoError> {
         let mut result_status = Ok(vec![]);
         let bongo_col_defs = cols.iter()
             .map(|col: &ColumnDef| -> BongoColDef {
                 match BongoColDef::try_from(col) {
-                    Ok(bongo_col_def) => { bongo_col_def }
-                    Err(message) => {
-                        result_status = Err(message);
+                    Ok(bongo_col_def) => { return bongo_col_def }
+                    Err(err) => {
+                        result_status = Err(err);
                         // return placeholder
                         BongoColDef { name: "".to_string(), data_type: BongoDataType::Int }
                     }
+
                 }
             })
             .collect();
@@ -387,7 +383,7 @@ impl SqlParser {
         };
     }
 
-    fn drop_to_statement(drop: Ast) -> Result<Statement, String> {
+    fn drop_to_statement(drop: Ast) -> Result<Statement, BongoError> {
         return match drop {
             Ast::Drop { object_type, names, .. } => {
                 match object_type {
@@ -396,14 +392,14 @@ impl SqlParser {
                             names: Self::vec_string_from_vec_obj_names(names)?
                         })
                     }
-                    _ => { Err(String::from("BongoDB only supports DROP statements for TABLEs.")) }
+                    _ => { unsupported_feature_err("BongoDB only supports DROP statements for TABLEs.") }
                 }
             }
             _ => { internal_error("drop_to_statement should only be called with the Drop variant.") }
         };
     }
 
-    fn vec_string_from_vec_obj_names(obj_names: Vec<ObjectName>) -> Result<Vec<String>, String> {
+    fn vec_string_from_vec_obj_names(obj_names: Vec<ObjectName>) -> Result<Vec<String>, BongoError> {
         let mut result_status = Ok(vec![]);
 
         let names = obj_names.into_iter()
@@ -420,7 +416,7 @@ impl SqlParser {
             Ok(names)
         } else {
             result_status
-        }
+        };
     }
 }
 
