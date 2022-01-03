@@ -3,12 +3,14 @@ use tokio::io::{BufReader, AsyncWriteExt};
 use async_trait::async_trait;
 use std::sync::{Arc};
 
+
 ///
 /// A `Webserver` handling tcp connections in an asynchronous multithreaded manner using the tokio library
 ///
 pub struct Webserver<Request>
     where Request: Send {
     address: String,
+    // TODO: change the boxes to generics like done in the crate::util::conversions::TryConvertAll
     // as the size of RequestParser and Fn(Request) is unknown at compile time they have to be
     // stored on the heap using Box
     request_parser: Box<dyn RequestParser<Request> + Send + Sync>,

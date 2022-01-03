@@ -1,6 +1,6 @@
-use crate::types::{BongoLiteral, ColumnDef, Row};
+use crate::types::{BongoLiteral, ColumnDef, Row, BongoError};
 use std::convert::TryFrom;
-use sqlparser::ast::{Expr as SqlParserExpr, Value, BinaryOperator as SqlParserBinOp, BinaryOperator, Assignment as SqlParserAssignment};
+use sqlparser::ast::{Expr as SqlParserExpr, Value, BinaryOperator as SqlParserBinOp, BinaryOperator, Assignment as SqlParserAssignment, SelectItem as SqlParserSelectItem, OrderByExpr};
 use std::num::ParseIntError;
 use crate::statement::Expr::BinaryExpr;
 
@@ -12,18 +12,17 @@ pub struct Assignment {
 }
 
 impl TryFrom<SqlParserAssignment> for Assignment {
-    type Error = ();
+    type Error = BongoError;
 
     fn try_from(parser_assignment: SqlParserAssignment) -> Result<Self, Self::Error> {
         if parser_assignment.id.len() != 1 {
-            // only single identifiers supported
-            return Err(());
+            return Err(BongoError::UnsupportedFeatureError("Only single identifiers are supported \
+            in assignments by BongoDB.".to_string()));
         }
 
         let expr = Expr::try_from(parser_assignment.value)?;
 
         return match expr {
-            // only values are supported in assignments
             Expr::Value(val) => {
                 Ok(
                     Self {
@@ -31,7 +30,7 @@ impl TryFrom<SqlParserAssignment> for Assignment {
                         val,
                     })
             }
-            _ => { Err(()) }
+            _ => { Err(BongoError::UnsupportedFeatureError("Only values are supported in assignments".to_string())) }
         };
     }
 }
@@ -43,11 +42,57 @@ pub enum Order {
     Desc(String),
 }
 
+impl TryFrom<OrderByExpr> for Order {
+    type Error = BongoError;
+
+    fn try_from(order_expr: OrderByExpr) -> Result<Self, Self::Error> {
+        return match order_expr.expr {
+            SqlParserExpr::Identifier(ident) => {
+                let column = String::from(&ident.value);
+
+                Ok(
+                    match order_expr.asc {
+                        None => { Order::Asc(column) }
+                        Some(is_asc) => {
+                            match is_asc {
+                                true => { Order::Asc(column) }
+                                false => { Order::Desc(column) }
+                            }
+                        }
+                    })
+            }
+            _ => {
+                Err(BongoError::UnsupportedFeatureError("ORDER BY is only supported with exactly \
+                one argument which must be a column name.".to_string()))
+            }
+        };
+    }
+}
+
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum SelectItem {
     ColumnName(String),
     Wildcard,
+}
+
+impl TryFrom<SqlParserSelectItem> for SelectItem {
+    type Error = BongoError;
+
+    fn try_from(item: SqlParserSelectItem) -> Result<Self, Self::Error> {
+        let error = Err(BongoError::UnsupportedFeatureError("Only identifiers and unqualified wildcards \
+            are supported as select items by BongoDB.".to_string()));
+        match item {
+            SqlParserSelectItem::UnnamedExpr(expr) => {
+                match expr {
+                    SqlParserExpr::Identifier(ident) => { Ok(SelectItem::ColumnName(String::from(&ident.value))) }
+                    _ => { error }
+                }
+            }
+            SqlParserSelectItem::Wildcard => { Ok(SelectItem::Wildcard) }
+            _ => { error }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -64,7 +109,7 @@ pub enum BinOp {
 }
 
 impl TryFrom<SqlParserBinOp> for BinOp {
-    type Error = ();
+    type Error = BongoError;
 
     fn try_from(value: SqlParserBinOp) -> Result<Self, Self::Error> {
         return match value {
@@ -77,8 +122,8 @@ impl TryFrom<SqlParserBinOp> for BinOp {
             BinaryOperator::And => { Ok(BinOp::And) }
             BinaryOperator::Or => { Ok(BinOp::Or) }
             _ => {
-                // other operators are not supported yet
-                Err(())
+                Err(BongoError::UnsupportedFeatureError("Only the Operators >, <, >=, <=, =, !=, \
+                AND, OR are supported by BongoDB".to_string()))
             }
         };
     }
@@ -97,7 +142,7 @@ pub enum Expr {
 }
 
 impl TryFrom<SqlParserExpr> for Expr {
-    type Error = ();
+    type Error = BongoError;
 
     fn try_from(expr: SqlParserExpr) -> Result<Self, Self::Error> {
         return match expr {
@@ -107,14 +152,17 @@ impl TryFrom<SqlParserExpr> for Expr {
                     Value::Number(lit, ..) => {
                         match str::parse::<i64>(&lit) {
                             Ok(val) => { Ok(Expr::Value(BongoLiteral::Int(val))) }
-                            Err(_) => { Err(()) }
+                            Err(_) => { Err(BongoError::InternalError("Failed to parse int value.".to_string())) }
                         }
                     }
                     Value::SingleQuotedString(lit) | Value::DoubleQuotedString(lit) =>
                         { Ok(Expr::Value(BongoLiteral::Varchar(String::from(&lit), lit.len()))) }
                     Value::Boolean(val) => { Ok(Expr::Value(BongoLiteral::Bool(val))) }
                     Value::Null => { Ok(Expr::Value(BongoLiteral::Null)) }
-                    _ => { Err(()) }
+                    _ => {
+                        Err(BongoError::UnsupportedFeatureError("Only integers, single quoted strings \
+                    booleans and NULL values are supported as literals by BongoDB.".to_string()))
+                    }
                 };
             }
             SqlParserExpr::BinaryOp { left, op, right } => {
@@ -127,7 +175,10 @@ impl TryFrom<SqlParserExpr> for Expr {
                     right: Box::new(Expr::try_from(*right)?),
                 })
             }
-            _ => { Err(()) }
+            _ => {
+                Err(BongoError::UnsupportedFeatureError("Only identifiers, values, and binary \
+            operations are supported as expressions by BongoDB.".to_string()))
+            }
         };
     }
 }

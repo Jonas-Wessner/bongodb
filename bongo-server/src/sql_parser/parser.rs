@@ -9,11 +9,11 @@ use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as 
 use crate::types::{Row, BongoLiteral, ColumnDef as BongoColDef, BongoDataType, BongoError};
 use crate::statement::Expr::Value;
 use crate::sql_parser::err_messages::{*};
+use crate::util::conversions::{TryConvertAllExt, TryConvertOption};
+use crate::types::BongoError::UnsupportedFeatureError;
 
 
 pub struct SqlParser {}
-
-// TODO: extract utility function that converts all elements of a vector with TryFrom trait
 
 // TODO: documentation
 
@@ -57,10 +57,10 @@ impl SqlParser {
             SetExpr::Select(select) => {
                 Ok(
                     Statement::Select {
-                        cols: Self::select_extract_cols(&select)?,
-                        table: Self::select_extract_table(&select)?,
-                        order: Self::select_extract_order(&query.order_by)?,
-                        condition: Self::opt_bongo_expr_from_opt_expr(select.selection)?,
+                        cols: select.projection.try_convert_all(|item| { BongoSelectItem::try_from(item) })?,
+                        table: Self::select_extract_table(&select.from)?,
+                        order: Self::select_extract_order(query.order_by)?,
+                        condition: select.selection.try_convert_option(|expr| { BongoExpr::try_from(expr) })?,
                     })
             }
             _ => {
@@ -69,55 +69,7 @@ impl SqlParser {
         };
     }
 
-    fn select_extract_cols(select: &Select) -> Result<Vec<BongoSelectItem>, BongoError> {
-        let items: Vec<Result<BongoSelectItem, BongoError>> = select.projection.iter()
-            .map(|item: &SelectItem| -> Result<BongoSelectItem, BongoError> {
-                return match item {
-                    SelectItem::UnnamedExpr(expr) => {
-                        match expr {
-                            Expr::Identifier(ident) => {
-                                Ok(BongoSelectItem::ColumnName(String::from(&ident.value)))
-                            }
-                            _ => {
-                                unsupported_feature_err("Only identifiers are supported in a projection inside a SELECT.")
-                            }
-                        }
-                    }
-                    SelectItem::Wildcard => {
-                        Ok(BongoSelectItem::Wildcard)
-                    }
-                    _ => {
-                        unsupported_feature_err("Only unqualified Wildcards are supported. Example: `SELECT * FROM ...`")
-                    }
-                };
-            }).collect::<Vec<Result<BongoSelectItem, BongoError>>>();
-
-
-        let mut errors = items.iter()
-            .filter_map(|result| -> Option<BongoError> {
-                return match result {
-                    Ok(_) => {
-                        None
-                    }
-                    Err(error) => {
-                        Some(BongoError::UnsupportedFeatureError(String::from("RETURN ACTUAL UNDERLYING ERROR HERE")))
-                    }
-                };
-            }).collect::<Vec<BongoError>>();
-
-        return if !errors.is_empty() {
-            // return first error if errors exist
-            Err(errors.remove(0))
-        } else {
-            Ok(items.into_iter()
-                .map(|item| -> BongoSelectItem {
-                    item.unwrap()
-                }).collect::<Vec<BongoSelectItem>>())
-        };
-    }
-
-    fn select_extract_table(select: &Select) -> Result<String, BongoError> {
-        let tables_with_joins: &Vec<TableWithJoins> = &select.from;
+    fn select_extract_table(tables_with_joins: &Vec<TableWithJoins>) -> Result<String, BongoError> {
         if tables_with_joins.len() != 1 {
             return only_single_table_from_err();
         }
@@ -125,7 +77,7 @@ impl SqlParser {
         Self::table_name_from_table_with_joins(&tables_with_joins[0])
     }
 
-    fn select_extract_order(order_by_exprs: &Vec<OrderByExpr>) -> Result<Option<Order>, BongoError> {
+    fn select_extract_order(mut order_by_exprs: Vec<OrderByExpr>) -> Result<Option<Order>, BongoError> {
         if order_by_exprs.len() == 0 {
             return Ok(None);
         }
@@ -133,32 +85,7 @@ impl SqlParser {
             return order_by_only_one_column_err();
         }
 
-        let order_by_expr = &order_by_exprs[0];
-
-        return match &order_by_expr.expr {
-            Expr::Identifier(ident) => {
-                let column = String::from(&ident.value);
-
-                return Ok(Some(
-                    match order_by_expr {
-                        OrderByExpr { asc, .. } => {
-                            match asc {
-                                None => { Order::Asc(column) }
-                                Some(is_asc) => {
-                                    match is_asc {
-                                        true => { Order::Asc(column) }
-                                        false => { Order::Desc(column) }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                ));
-            }
-            _ => {
-                order_by_only_one_column_err()
-            }
-        };
+        return Ok(Some(Order::try_from(order_by_exprs.remove(0))?));
     }
 
     fn insert_to_statement(insert: Ast) -> Result<Statement, BongoError> {
@@ -205,16 +132,11 @@ impl SqlParser {
                     .map(|exprs: Vec<Expr>| {
                         exprs.into_iter()
                             .map(|expr: Expr| {
-                                return
-                                    match BongoExpr::try_from(expr) {
-                                        Ok(bongo_expr) => {
-                                            match bongo_expr {
-                                                BongoExpr::Value(data) => { Ok(data) }
-                                                _ => { insert_list_only_literals() }
-                                            }
-                                        }
-                                        Err(_) => { insert_list_only_literals() }
-                                    };
+                                let bongo_expr = BongoExpr::try_from(expr)?;
+                                match bongo_expr {
+                                    BongoExpr::Value(data) => { Ok(data) }
+                                    _ => { insert_list_only_literals() }
+                                }
                             }).collect()
                     }).collect()
             }
@@ -232,8 +154,8 @@ impl SqlParser {
             Ast::Update { table, selection, assignments } => {
                 Ok(Statement::Update {
                     table: Self::table_name_from_table_with_joins(&table)?,
-                    assignments: Self::bongo_assignment_from_assignments(assignments)?,
-                    condition: Self::opt_bongo_expr_from_opt_expr(selection)?,
+                    assignments: assignments.try_convert_all(|assignment| { BongoAssignment::try_from(assignment) })?,
+                    condition: selection.try_convert_option(|expr| { BongoExpr::try_from(expr) })?,
                 })
             }
             _ => { internal_error("update_to_statement should only be called with the Update variant.") }
@@ -257,44 +179,6 @@ impl SqlParser {
         };
     }
 
-    fn opt_bongo_expr_from_opt_expr(expr: Option<Expr>) -> Result<Option<BongoExpr>, BongoError> {
-        return match expr {
-            Some(cond) => {
-                match BongoExpr::try_from(cond) {
-                    Ok(bongo_expr) => { Ok(Some(bongo_expr)) }
-                    Err(_) => { unsupported_feature_err("This type of expression is not supported in a WHERE clause by BongoDB.") }
-                }
-            }
-            None => {
-                Ok(None)
-            }
-        };
-    }
-
-    fn bongo_assignment_from_assignments(assignments: Vec<Assignment>) -> Result<Vec<BongoAssignment>, BongoError> {
-        let mut ok = true;
-
-        let bongo_assignments = assignments.into_iter()
-            .map(|assignment| {
-                return match BongoAssignment::try_from(assignment) {
-                    Ok(bongo_assignment) => { bongo_assignment }
-                    Err(_) => {
-                        // set flag to false and return placeholder for syntactic correctness
-                        ok = false;
-                        BongoAssignment { varname: "".to_string(), val: BongoLiteral::Null }
-                    }
-                };
-            }).collect();
-
-        return if ok {
-            Ok(bongo_assignments)
-        } else {
-            unsupported_feature_err("This type of assignment is not supported by BongoDB. \
-            BongoDB only supports assignments where the left hand side operand is a column name and \
-            the right hand side operator is a literal.")
-        };
-    }
-
     fn string_from_obj_name(obj_name: &mut ObjectName) -> Result<String, BongoError> {
         if obj_name.0.len() != 1 {
             return unsupported_feature_err("BongoDB does not support whitespaces in \
@@ -310,7 +194,7 @@ impl SqlParser {
                 Ok(
                     Statement::Delete {
                         table: Self::string_from_obj_name(&mut table_name)?,
-                        condition: Self::opt_bongo_expr_from_opt_expr(selection)?,
+                        condition: selection.try_convert_option(|expr| { BongoExpr::try_from(expr) })?,
                     })
             }
             _ => { internal_error("delete_to_statement should only be called with the Delete variant.") }
@@ -327,32 +211,11 @@ impl SqlParser {
             Ast::CreateTable { mut name, mut columns, .. } => {
                 Ok(Statement::CreateTable {
                     table: Self::string_from_obj_name(&mut name)?,
-                    cols: Self::vec_col_def_from_vec_col_def(&mut columns)?,
+                    cols: columns.try_convert_all(|mut col_def: ColumnDef| { BongoColDef::try_from(&col_def) })?,
+                    // cols: Self::vec_col_def_from_vec_col_def(&mut columns)?,
                 })
             }
             _ => { internal_error("create_table_to_statement should only be called with the CreateTable variant.") }
-        };
-    }
-
-    fn vec_col_def_from_vec_col_def(cols: &mut Vec<ColumnDef>) -> Result<Vec<BongoColDef>, BongoError> {
-        let mut result_status = Ok(vec![]);
-        let bongo_col_defs = cols.iter()
-            .map(|col: &ColumnDef| -> BongoColDef {
-                match BongoColDef::try_from(col) {
-                    Ok(bongo_col_def) => { return bongo_col_def; }
-                    Err(err) => {
-                        result_status = Err(err);
-                        // return placeholder
-                        BongoColDef { name: "".to_string(), data_type: BongoDataType::Int }
-                    }
-                }
-            })
-            .collect();
-
-        return if result_status.is_ok() {
-            Ok(bongo_col_defs)
-        } else {
-            result_status
         };
     }
 
@@ -362,33 +225,14 @@ impl SqlParser {
                 match object_type {
                     ObjectType::Table => {
                         Ok(Statement::DropTable {
-                            names: Self::vec_string_from_vec_obj_names(names)?
+                            names: names.try_convert_all(|mut obj_name| { Self::string_from_obj_name(&mut obj_name) })?
+                            // names: Self::vec_string_from_vec_obj_names(names)?
                         })
                     }
                     _ => { unsupported_feature_err("BongoDB only supports DROP statements for TABLEs.") }
                 }
             }
             _ => { internal_error("drop_to_statement should only be called with the Drop variant.") }
-        };
-    }
-
-    fn vec_string_from_vec_obj_names(obj_names: Vec<ObjectName>) -> Result<Vec<String>, BongoError> {
-        let mut result_status = Ok(vec![]);
-
-        let names = obj_names.into_iter()
-            .map(|mut obj_name: ObjectName| -> String {
-                return match Self::string_from_obj_name(&mut obj_name) {
-                    Ok(name) => { name }
-                    Err(msg) => {
-                        result_status = Err(msg);
-                        "".to_string()
-                    }
-                };
-            }).collect();
-        return if result_status.is_ok() {
-            Ok(names)
-        } else {
-            result_status
         };
     }
 }
