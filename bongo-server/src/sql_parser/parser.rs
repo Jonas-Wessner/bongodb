@@ -19,13 +19,10 @@ impl SqlParser {
 
         let parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
 
-        return match parse_result {
-            Ok(mut stmts) => {
-                Self::ast_to_statement(stmts.remove(0))
-            }
-            Err(err) => {
-                Err(BongoError::from(err))
-            }
+        return if parse_result.is_ok() {
+            Self::ast_to_statement(parse_result.unwrap().remove(0))
+        } else {
+            Err(BongoError::from(parse_result.unwrap_err()))
         };
     }
 
