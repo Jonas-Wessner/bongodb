@@ -93,8 +93,12 @@ impl<Request: 'static + Send> Webserver<Request> {
             let mut reader = BufReader::new(read_half);
 
             loop {
+                // TODO: read first 4 bytes from stream (header), then read that amount of bytes from stream
+                //  parse the resulting bytes to the parser, which then parses the Request object from
+                //  the read bytes.
                 match self.request_parser.parse(&mut reader).await {
                     Some(request) => {
+                        // TODO: before writing all bytes of the response write the 4-byte header to stream first.
                         write_half.write_all((self.handle_request)(request).as_bytes()).await.unwrap();
                         write_half.flush().await.unwrap();
                     }

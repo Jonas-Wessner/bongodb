@@ -55,10 +55,12 @@
 ## Data format transmitted via tcp between server and client
 
 - data-format Client -> Server:
+
+```json
   {
   "sql": ""
   }
-
+```
 
 - data-format Server -> Client:
 - The Structure of the return data is implicitly known, because the client sends the select statement and therefore
@@ -69,7 +71,7 @@
   tcp. Therefore another transmitting protocol like HTTP, which would cause too much overhead, can be omitted.
 
 ```json
-  {
+{
   "successful": 0,
   "error": "something went wrong",
   "data": [
@@ -92,8 +94,10 @@
 }
 ```
 
-data is `null` in case the request returns no result. In case it does return a result it is an array containing json
-objects representing the rows. This array may have zero elements if the query returns no rows.
+- data is `null` in case the request returns no result. In case it does return a result it is an array containing json
+  objects representing the rows. This array may have zero elements if the query returns no rows.
+  
+- webserver and client assume a 32-bit header before the actual message which tells them how big the message is in bytes.
 
 ## Supported SQL statements:
 
