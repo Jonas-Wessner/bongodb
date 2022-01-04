@@ -19,8 +19,6 @@ impl SqlParser {
 
         let parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
 
-        println!("{:?}", parse_result);
-
         return match parse_result {
             Ok(mut stmts) => {
                 Self::ast_to_statement(stmts.remove(0))
@@ -235,18 +233,9 @@ impl SqlParser {
 
 #[cfg(test)]
 mod tests {
-    use crate::statement::Statement;
-    use sqlparser::ast::ObjectName;
-
     mod select {
-        use sqlparser::ast::{Expr, Ident, BinaryOperator};
-        use sqlparser::ast::Expr::{BinaryOp, Identifier, Value};
-        use sqlparser::tokenizer::Token::Number;
-        use sqlparser::ast::Value as ValueEnum;
-
         use crate::sql_parser::parser::SqlParser;
         use crate::statement::{Statement, SelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp};
-        use crate::statement::SelectItem::Wildcard;
         use crate::types::BongoLiteral;
 
         #[test]
@@ -268,7 +257,7 @@ mod tests {
                     left: Box::new(BongoExpr::BinaryExpr {
                         left: Box::new(BongoExpr::Identifier(String::from("a"))),
                         op: BongoBinOp::Gt,
-                        right: Box::new((BongoExpr::Identifier(String::from("b")))),
+                        right: Box::new(BongoExpr::Identifier(String::from("b"))),
                     }),
                     op: BongoBinOp::And,
                     right: Box::new(BongoExpr::BinaryExpr {
@@ -285,8 +274,68 @@ mod tests {
         }
 
         #[test]
+        fn no_condition() {
+            let sql = "SELECT col_1, col_2 \
+           FROM table_1";
+
+            let expected_statement = Statement::Select {
+                cols: vec![
+                    SelectItem::ColumnName(String::from("col_1")),
+                    SelectItem::ColumnName(String::from("col_2"))
+                ],
+                table: String::from("table_1"),
+                order: None,
+                condition: None,
+            };
+
+            let statement = SqlParser::parse(sql);
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+
+        #[test]
+        fn asc_as_default() {
+            let sql = "SELECT *\
+            FROM table_1 \
+            ORDER BY col_1;";
+
+            let statement = SqlParser::parse(sql);
+
+            let expected_statement = Statement::Select {
+                cols: vec![
+                    SelectItem::Wildcard
+                ],
+                table: String::from("table_1"),
+                condition: None,
+                order: Some(Order::Asc("col_1".to_string())),
+            };
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+
+        #[test]
+        fn desc() {
+            let sql = "SELECT *\
+            FROM table_1 \
+            ORDER BY col_1 DESC;";
+
+            let statement = SqlParser::parse(sql);
+
+            let expected_statement = Statement::Select {
+                cols: vec![
+                    SelectItem::Wildcard
+                ],
+                table: String::from("table_1"),
+                condition: None,
+                order: Some(Order::Desc("col_1".to_string())),
+            };
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+
+        #[test]
         fn simple_wildcard() {
-            let sql = "SELECT * FROM table_1;";
+            let sql = "SELECT * FROM table_1";
 
             let statement = SqlParser::parse(sql);
 
@@ -309,7 +358,7 @@ mod tests {
         use crate::types::BongoLiteral;
 
         #[test]
-        fn insert_multiple() {
+        fn mutilple_rows() {
             let sql = r#"INSERT INTO table_1 (col_1, col_2, col_3) VALUES
                               (1, 'a', true),
                               (2, 'b', false),
@@ -381,7 +430,7 @@ mod tests {
                     left: Box::new(BongoExpr::BinaryExpr {
                         left: Box::new(BongoExpr::Identifier(String::from("a"))),
                         op: BongoBinOp::NotEq,
-                        right: Box::new((BongoExpr::Identifier(String::from("b")))),
+                        right: Box::new(BongoExpr::Identifier(String::from("b"))),
                     }),
                     op: BongoBinOp::Or,
                     right: Box::new(BongoExpr::BinaryExpr {
@@ -390,6 +439,20 @@ mod tests {
                         right: Box::new(BongoExpr::Value(BongoLiteral::Bool(false))),
                     }),
                 }),
+            };
+
+            assert_eq!(statement, Ok(expected_statement));
+        }
+
+        #[test]
+        fn no_condition() {
+            let sql = "DELETE FROM table_1";
+
+            let statement = SqlParser::parse(sql);
+
+            let expected_statement = Statement::Delete {
+                table: "table_1".to_string(),
+                condition: None,
             };
 
             assert_eq!(statement, Ok(expected_statement));
@@ -403,7 +466,7 @@ mod tests {
         use crate::types::{ColumnDef as BongoColDef, BongoDataType};
 
         #[test]
-        fn create_table() {
+        fn all_data_types_once() {
             let sql = "CREATE TABLE table_1 \
                                 ( \
                                     col_1 INT, \
