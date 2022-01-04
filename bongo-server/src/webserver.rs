@@ -1,6 +1,5 @@
-use tokio::net::{TcpListener, tcp::ReadHalf};
-use tokio::io::{BufReader, AsyncWriteExt};
-use async_trait::async_trait;
+use tokio::net::{TcpListener};
+use tokio::io::{BufReader, AsyncWriteExt, AsyncReadExt};
 use std::sync::{Arc};
 
 
@@ -19,17 +18,17 @@ pub struct Webserver<Request>
 // safe to implement, because Webserver only has read access to its fields and therefore no mutable
 // shared data exists
 unsafe impl<Request: Send> Send for Webserver<Request> {}
+
 unsafe impl<Request: Send> Sync for Webserver<Request> {}
 
 
 ///
 /// Structs that implement `RequestParser<T>` can be used to parse requests of type `T`
 ///
-#[async_trait]
 pub trait RequestParser<Request>
-    // currently requests only require to be `Send`
+// currently requests only require to be `Send`
     where Request: Send {
-    async fn parse(&self, reader: &mut BufReader<ReadHalf>) -> Option<Request>;
+    fn parse(&self, bytes: &[u8]) -> Option<Request>;
 }
 
 impl<Request: 'static + Send> Webserver<Request> {
@@ -44,7 +43,7 @@ impl<Request: 'static + Send> Webserver<Request> {
     ///
     pub fn new<F, P>(address: &str, request_parser: P, handle_request: F) -> Webserver<Request>
         where F: 'static + (Fn(Request) -> String) + Send + Sync,
-              P: 'static + RequestParser<Request> + Send + Sync{
+              P: 'static + RequestParser<Request> + Send + Sync {
         Self {
             address: String::from(address),
             request_parser: Box::new(request_parser),
@@ -93,18 +92,32 @@ impl<Request: 'static + Send> Webserver<Request> {
             let mut reader = BufReader::new(read_half);
 
             loop {
-                // TODO: read first 4 bytes from stream (header), then read that amount of bytes from stream
-                //  parse the resulting bytes to the parser, which then parses the Request object from
-                //  the read bytes.
-                match self.request_parser.parse(&mut reader).await {
-                    Some(request) => {
-                        let response = (self.handle_request)(request);
-                        let size: &[u8] = &response.len().to_be_bytes();
-                        write_half.write_all(&[size, response.as_bytes()].concat()).await.unwrap();
-                        write_half.flush().await.unwrap();
+                match reader.read_u32().await {
+                    Ok(size) => {
+                        let mut buffer = Vec::with_capacity(size as usize);
+                        match reader.read_exact(&mut buffer).await {
+                            Ok(_) => {
+                                let response: String;
+                                match self.request_parser.parse(&buffer) {
+                                    Some(request) => {
+                                        response = (self.handle_request)(request);
+                                    }
+                                    None => {
+                                        response = "Request format could not be parsed, request is ignored.".to_string();
+                                    }
+                                }
+                                let size = &response.len().to_be_bytes();
+                                write_half.write_all(&[size, response.as_bytes()].concat()).await.unwrap();
+                                write_half.flush().await.unwrap();
+                            }
+                            Err(_) => {
+                                println!("Reading request with size of {} bytes not successful. Therefore connection closed.", size);
+                                break;
+                            }
+                        }
                     }
-                    None => {
-                        println!("A connection has been canceled.");
+                    Err(_) => {
+                        println!("Reading 32-bit request header not successful. Therefore connection closed.");
                         break;
                     }
                 }
