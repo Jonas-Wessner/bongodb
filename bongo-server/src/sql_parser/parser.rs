@@ -30,10 +30,16 @@ impl SqlParser {
 
         let parse_result: Result<Vec<Ast>, ParserError> = Parser::parse_sql(&dialect, sql);
 
-        return if parse_result.is_ok() {
-            Self::ast_to_statement(parse_result.unwrap().remove(0))
-        } else {
-            Err(BongoError::from(parse_result.unwrap_err()))
+        return match parse_result {
+            Ok(mut statements) => {
+                if statements.is_empty() {
+                    return Err(BongoError::EmptySqlStatementError);
+                }
+                Self::ast_to_statement(statements.remove(0))
+            }
+            Err(err) => {
+                Err(BongoError::from(err))
+            }
         };
     }
 
@@ -555,6 +561,22 @@ mod tests {
             let expected_statement = Statement::CreateDB { name: "db_1".to_string() };
 
             assert_eq!(statement, Ok(expected_statement));
+        }
+    }
+
+    mod diverse {
+        use crate::sql_parser::parser::SqlParser;
+        use crate::types::BongoError::EmptySqlStatementError;
+
+        #[test]
+        fn empty_statement(){
+            let sql = "";
+
+            let response = SqlParser::parse(sql);
+
+            let expected_response = Err(EmptySqlStatementError);
+
+            assert_eq!(response, expected_response);
         }
     }
 }
