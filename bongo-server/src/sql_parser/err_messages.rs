@@ -1,5 +1,10 @@
 use crate::types::BongoError;
 
+///
+/// This module contains a couple of helper functions that are used to reduce code duplication
+/// regarding returning `Err(BongoError)` types.
+///
+
 pub fn syntax_error<T>(err_message: &str) -> Result<T, BongoError> {
     Err(BongoError::SqlSyntaxError(String::from(err_message)))
 }

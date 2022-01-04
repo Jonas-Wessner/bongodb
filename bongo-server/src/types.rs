@@ -6,14 +6,21 @@ use sqlparser::ast::{ColumnDef as SqlParserColDef, DataType};
 use crate::serialize::Serialize;
 use sqlparser::parser::ParserError;
 
+///
+/// `BongoError` is the Error class used by the `BongoDB` server.
+///
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum BongoError {
     SqlSyntaxError(String),
     UnsupportedFeatureError(String),
+    // an error that represents a bug in BongoDB
     InternalError(String),
 }
 
+///
+/// Converts a `ParserError` of the used `sqlparser`-library into a `BongoErr`
+///
 impl From<ParserError> for BongoError {
     // Assuming the parser library is correct, all resulting error must be syntax errors
     fn from(err: ParserError) -> Self {
@@ -38,6 +45,9 @@ pub enum BongoLiteral {
     Null,
 }
 
+///
+/// Defines how a BongoLiteral is serialized in the web communication between `BongoServer` an a client.
+///
 impl Serialize for BongoLiteral {
     fn serialize(&self) -> String {
         return match self {
@@ -49,14 +59,22 @@ impl Serialize for BongoLiteral {
     }
 }
 
+///
+/// `BongoDataType` represents all data types supported by BongoDB.
+///
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum BongoDataType {
     Int,
     Bool,
+    // VARCHARs are required to have a fixed size
     Varchar(usize),
 }
 
+///
+/// Tries to convert an `&DataType` of the used `sqlparser`-library into an object of the custom
+/// `BongoDataType` type paying attention to what features are supported by BongoDB.
+///
 impl TryFrom<&DataType> for BongoDataType {
     type Error = BongoError;
 
@@ -79,7 +97,16 @@ impl TryFrom<&DataType> for BongoDataType {
     }
 }
 
-
+///
+/// `ColumnDef` represents the definition of a column in an SQL CREATE TABLE statement.
+///
+/// # Examples
+///
+/// In the statement `CREATE TABLE table_1 (col_1 INT, col_2 BOOLEAN);`
+/// two `ColumnDef`s are specified:
+/// `BongoColDef { name: "col_1".to_string(), data_type: BongoDataType::Int },`
+/// `BongoColDef { name: "col_2".to_string(), data_type: BongoDataType::Bool },`
+///
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct ColumnDef {
@@ -87,6 +114,10 @@ pub struct ColumnDef {
     pub(crate) data_type: BongoDataType,
 }
 
+///
+/// Tries to convert an `&SqlParserColDef` of the used `sqlparser`-library into an object of the custom
+/// `ColumnDef` type paying attention to what features are supported by BongoDB.
+///
 impl TryFrom<&SqlParserColDef> for ColumnDef {
     type Error = BongoError;
 
@@ -100,6 +131,10 @@ impl TryFrom<&SqlParserColDef> for ColumnDef {
 }
 
 
+///
+/// `Row` is a type definition that is used in two scenarios:
+/// 1. Inside the `BongoResponse::Success` variant representing the result of an SQL SELECT statement.
+/// 2. Inside the `Statement::Insert` variant representing a row to be inserted into a table.
 ///
 /// `Row` represents one row that is returned in a `BongoResponse::Success` variant.
 ///

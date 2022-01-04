@@ -121,11 +121,6 @@ WHERE condition;
 ```
 
 ```sql
-CREATE
-DATABASE testDB;
-```
-
-```sql
 CREATE TABLE table_name
 (
     column1 datatype,
@@ -141,10 +136,7 @@ CREATE TABLE table_name
 DROP TABLE table_name; 
 ```
 
-```sql
-DROP
-DATABASE databasename; 
-```
+Assuming that we always work with exactly one database, CREATE DATABASE and DROP DATABASE statements are not supported.
 
 ### Major restrictions:
 

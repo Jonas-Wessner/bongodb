@@ -2,13 +2,21 @@ use crate::types::{BongoLiteral, ColumnDef, Row, BongoError};
 use std::convert::TryFrom;
 use sqlparser::ast::{Expr as SqlParserExpr, Value, BinaryOperator as SqlParserBinOp, BinaryOperator, Assignment as SqlParserAssignment, SelectItem as SqlParserSelectItem, OrderByExpr};
 
+///
+/// `Assignment` is a structure that represents an assignment of a value to a column.
+/// So far assignments are only supported and used in SQL UPDATE statements.
+///
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct Assignment {
-    pub varname: String,
+    pub col_name: String,
     pub val: BongoLiteral,
 }
 
+///
+/// Tries to convert an `Assignment` of the used `sqlparser`-library into an object of the custom
+/// `Assignment` type paying attention to what features are supported by BongoDB.
+///
 impl TryFrom<SqlParserAssignment> for Assignment {
     type Error = BongoError;
 
@@ -24,7 +32,7 @@ impl TryFrom<SqlParserAssignment> for Assignment {
             Expr::Value(val) => {
                 Ok(
                     Self {
-                        varname: String::from(&parser_assignment.id[0].value),
+                        col_name: String::from(&parser_assignment.id[0].value),
                         val,
                     })
             }
@@ -33,6 +41,11 @@ impl TryFrom<SqlParserAssignment> for Assignment {
     }
 }
 
+///
+/// `Order` represents the semantics of an SQL ORDER BY clause.
+/// However, in SQL ORDER BY clauses can be specified with multiple orders while `BongoDB` so far
+/// only supports ordering by exactly one column.
+///
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum Order {
@@ -40,6 +53,10 @@ pub enum Order {
     Desc(String),
 }
 
+///
+/// Tries to convert an `OrderByExpr` of the used `sqlparser`-library into an object of the custom
+/// `Order` type paying attention to what features are supported by BongoDB.
+///
 impl TryFrom<OrderByExpr> for Order {
     type Error = BongoError;
 
@@ -67,6 +84,17 @@ impl TryFrom<OrderByExpr> for Order {
     }
 }
 
+///
+/// `SelectItem` represents an item in a projection in SQL.
+///
+/// Although SQL is more powerful, `BongoDB` so far only supports column names and unqualified
+/// wildcard (asterisks *) as `SelectItem`s.
+///
+/// # Examples
+/// In the statement `SELECT col_1, col_2 FROM table_1`
+/// `col_1` and `col_2` are select items.
+///
+///
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum SelectItem {
@@ -74,6 +102,10 @@ pub enum SelectItem {
     Wildcard,
 }
 
+///
+/// Tries to convert a `SelectItem` of the used `sqlparser`-library into an object of the custom
+/// `SelectItem` type paying attention to what features are supported by BongoDB.
+///
 impl TryFrom<SqlParserSelectItem> for SelectItem {
     type Error = BongoError;
 
@@ -93,6 +125,10 @@ impl TryFrom<SqlParserSelectItem> for SelectItem {
     }
 }
 
+///
+/// `BinOp` represents a binary operator which can appear inside an expression.
+/// `BongoDB` does not support all binary operators that exist in SQL
+///
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum BinOp {
@@ -106,6 +142,10 @@ pub enum BinOp {
     Or,
 }
 
+///
+/// Tries to convert a `BinaryOperator` of the used `sqlparser`-library into an object of the custom
+/// `BinOp` type paying attention to what features are supported by BongoDB.
+///
 impl TryFrom<SqlParserBinOp> for BinOp {
     type Error = BongoError;
 
@@ -127,6 +167,20 @@ impl TryFrom<SqlParserBinOp> for BinOp {
     }
 }
 
+///
+/// `Expr` represents an expression in SQL.
+///
+/// `Expr` is recursively defined, such that a binary expression contains operand which each are
+/// expressions. The recursion stops at either the `Identifier(String)` variant or the
+/// `Value(BongoLiteral)` variant. Using a recursive definition allows to evaluating the expression
+/// in a natural way starting from its root.
+///
+/// # Examples
+///
+/// In the statement `SELECT * FROM table_1 WHERE (a < b) AND (c = 5)`
+/// `(a < b) AND (c = 5)` is the variant `BinaryExpr` where each operand each is a `BinaryExpr`
+/// variant. The operands of these Expressions then are `Identifier`s ore `Value`s
+///
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum Expr {
@@ -139,6 +193,10 @@ pub enum Expr {
     Value(BongoLiteral),
 }
 
+///
+/// Tries to convert an `Expr` of the used `sqlparser`-library into an object of the custom
+/// `Expr` type paying attention to what features are supported by BongoDB.
+///
 impl TryFrom<SqlParserExpr> for Expr {
     type Error = BongoError;
 
@@ -183,7 +241,7 @@ impl TryFrom<SqlParserExpr> for Expr {
 
 ///
 /// `Statement` is the type of statement that the `SqlParser` of `BongoServer` uses.
-/// This is a simplified view of the statement and does not support all sql features.
+/// This is a simplified view of the statement and does not support all SQL language features.
 ///
 #[derive(Debug)]
 #[derive(PartialEq)]

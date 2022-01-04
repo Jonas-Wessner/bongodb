@@ -8,12 +8,23 @@ use crate::types::{Row, ColumnDef as BongoColDef, BongoError};
 use crate::sql_parser::err_messages::{*};
 use crate::util::conversions::{TryConvertAllExt, TryConvertOption};
 
-
+///
+/// `SqlParser` can parse sql into objects of type `Statement`.
+///
+/// As `Statement` is a simplification of the language features that SQL offers,
+/// `SqlParser` does also not support all SQL features. Currently a library is used to parse the
+/// SQL into an abstract syntax tree. To be able to work with that more easily `SqlParser` then
+/// eliminates all the unnecessary complexity by converting the abstract syntax tree into the simpler
+/// `Statement`.
+///
 pub struct SqlParser {}
 
-// TODO: documentation
-
 impl SqlParser {
+    ///
+    /// Parses an SQL string into a `Statement` if possible.
+    ///
+    /// Possible reasons of errors when parsing are defined trough the `BongoError` enum.
+    ///
     pub fn parse(sql: &str) -> Result<Statement, BongoError> {
         let dialect = GenericDialect {};
 
@@ -394,11 +405,11 @@ mod tests {
                 table: "table_1".to_string(),
                 assignments: vec![
                     Assignment {
-                        varname: "col_1".to_string(),
+                        col_name: "col_1".to_string(),
                         val: BongoLiteral::Int(2),
                     },
                     Assignment {
-                        varname: "col_2".to_string(),
+                        col_name: "col_2".to_string(),
                         val: BongoLiteral::Varchar("new_value".to_string(), "new_value".len()),
                     }
                 ],

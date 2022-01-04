@@ -31,9 +31,9 @@ pub enum BongoResponse {
 ///
 /// Implementation of `Serialize` for `BongoResponse`
 ///
-/// Responses are Serialized to the following format:
+/// Responses are serialized to the following format:
 ///
-/// { "successful": <0_or_1>, "error": "<error_message>", "data": <array_of_rows_or_null> }
+/// `{ "successful": <0_or_1>, "error": "<error_message>", "data": <array_of_rows_or_null> }`
 ///
 /// <array_of_rows_or_null> in the non-null case has the structure of a json array of rows
 /// where each row is a json array of attributes:
