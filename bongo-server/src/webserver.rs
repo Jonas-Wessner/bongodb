@@ -98,8 +98,9 @@ impl<Request: 'static + Send> Webserver<Request> {
                 //  the read bytes.
                 match self.request_parser.parse(&mut reader).await {
                     Some(request) => {
-                        // TODO: before writing all bytes of the response write the 4-byte header to stream first.
-                        write_half.write_all((self.handle_request)(request).as_bytes()).await.unwrap();
+                        let response = (self.handle_request)(request);
+                        let size: &[u8] = &response.len().to_be_bytes();
+                        write_half.write_all(&[size, response.as_bytes()].concat()).await.unwrap();
                         write_half.flush().await.unwrap();
                     }
                     None => {
