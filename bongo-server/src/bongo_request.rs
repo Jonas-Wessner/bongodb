@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use tokio::io::{self, BufReader, AsyncBufReadExt};
 use tokio::net::tcp::ReadHalf;
 
-use crate::bongo_server::webserver::RequestParser;
+use crate::webserver::RequestParser;
 
 ///
 /// A Request from a bongo client to a `BongoServer`
@@ -31,6 +31,10 @@ impl BongoRequestParser {
         }
     }
 }
+
+// TODO: parse request from string instead directly from stream, as the webserver should read
+//  the correct amount of bytes from stream. Use json library for parsing in order to handle e.g.
+//  escaped '\"' or '\}'
 
 #[async_trait]
 impl RequestParser<BongoRequest> for BongoRequestParser {

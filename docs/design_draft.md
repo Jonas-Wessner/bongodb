@@ -34,6 +34,7 @@
                 - i64
                 - bool
                 - varchar
+                - Null
             - for later:
                 - u64
                 - f64
@@ -48,26 +49,31 @@
 
       [https://www.youtube.com/watch?v=OyBwIjnQLtI](https://www.youtube.com/watch?v=OyBwIjnQLtI)
 
-    tcp connected → new thread → wait for commands → parse sql → check for concurrent access → execute command → return result → send response with result → wait for new commands (back to step 3) → client exit thread
+  tcp connected → new thread → wait for commands → parse sql → check for concurrent access → execute command → return
+  result → send response with result → wait for new commands (back to step 3) → client exit thread
 
 ## Data format transmitted via tcp between server and client
 
 - data-format Client -> Server:
+
+```json
   {
   "sql": ""
   }
-
+```
 
 - data-format Server -> Client:
 - The Structure of the return data is implicitly known, because the client sends the select statement and therefore
   knows which table shall be queried.
 - Only select returns an array of "data". Other statements return an empty array of "data"
   For select statements:
-- As every transmitted information is encoded in json, the webserver knows, when a message is fully transmitted over tcp. Therefore another transmitting protocol like HTTP, which would cause too much overhead, can be omitted.
+- As every transmitted information is encoded in json, the webserver knows, when a message is fully transmitted over
+  tcp. Therefore another transmitting protocol like HTTP, which would cause too much overhead, can be omitted.
 
 ```json
-  {
-  "success_code": ENUM_SUCCESS_CODE,
+{
+  "successful": 0,
+  "error": "something went wrong",
   "data": [
     [
       1,
@@ -88,44 +94,45 @@
 }
 ```
 
-ENUM_SUCCESS_CODE:
-
-- 0 -> Sucessful
-- 1 -> Error invalid statement
-- 2 -> error correct statement, but cannot be executed
-- possibly other codes
+- data is `null` in case the request returns no result. In case it does return a result it is an array containing json
+  objects representing the rows. This array may have zero elements if the query returns no rows.
+  
+- webserver and client assume a 32-bit header before the actual message which tells them how big the message is in bytes.
 
 ## Supported SQL statements:
+
 - Only simple inserts without default values:
+
 ```sql
 INSERT INTO table_name (column_list)
-VALUES
-    (value_list_1),
-    (value_list_2),
+VALUES (value_list_1),
+       (value_list_2),
     ...
     (value_list_n);
 ```
 
 ```sql
 UPDATE table_name
-SET column1 = value1, column2 = value2, ...
-WHERE condition; 
+SET column1 = value1,
+    column2 = value2, ...
+    WHERE condition; 
 ```
 
 ```sql
-DELETE FROM table_name WHERE condition;
+DELETE
+FROM table_name
+WHERE condition;
 ```
 
 ```sql
-CREATE DATABASE testDB;
-```
-
-```sql
-CREATE TABLE table_name (
-                            column1 datatype,
-                            column2 datatype,
-                            column3 datatype,
-    ....
+CREATE TABLE table_name
+(
+    column1 datatype,
+    column2 datatype,
+    column3 datatype, .
+    .
+    .
+    .
 ); 
 ```
 
@@ -133,15 +140,22 @@ CREATE TABLE table_name (
 DROP TABLE table_name; 
 ```
 
-```sql
-DROP DATABASE databasename; 
-```
+Assuming that we always work with exactly one database, CREATE DATABASE and DROP DATABASE statements are not supported.
 
 ### Major restrictions:
 
-- Where Conditions only with operators <, > = (especially no AND, OR operators)
-- No JOINs
+Supported Operators in where conditions:
 
+- Gt
+- Lt
+- GtEq
+- LtEq
+- Eq
+- NotEq
+- And
+- Or
+
+No JOINs
 
 # Database client library
 
