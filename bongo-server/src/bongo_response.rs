@@ -1,4 +1,4 @@
-use crate::types::Row;
+use crate::types::{Row, BongoError};
 use crate::serialize::Serialize;
 
 ///
@@ -25,7 +25,7 @@ pub enum BongoResponse {
     /// `Error` represents that the execution of a `BongoRequest` was not successful.
     /// It contains the error message as a `String`.
     ///
-    Error(String),
+    Error(BongoError),
 }
 
 ///
@@ -61,10 +61,10 @@ impl Serialize for BongoResponse {
                     &serialized_data,
                 )
             }
-            BongoResponse::Error(message) => {
+            BongoResponse::Error(err) => {
                 return Self::assemble_serialized_response(
                     false,
-                    message,
+                    &format!("{:?}", err),
                     "");
             }
         }

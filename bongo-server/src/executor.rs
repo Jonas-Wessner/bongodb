@@ -42,7 +42,7 @@ impl Executor {
             Err(err) => {
                 let message = format!("Error parsing request: {:?}", err);
                 println!("{}", message);
-                BongoResponse::Error(message)
+                BongoResponse::Error(err)
             }
         }
     }
