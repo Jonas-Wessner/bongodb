@@ -16,6 +16,8 @@ pub enum BongoError {
     UnsupportedFeatureError(String),
     // an error that represents a bug in BongoDB
     InternalError(String),
+    // an error related to the webserver of BongoDB
+    WebServerError(String),
 }
 
 ///
