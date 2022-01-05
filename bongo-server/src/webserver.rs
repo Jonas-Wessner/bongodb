@@ -147,6 +147,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "server graceful shutdown not implemented yet causing the test to never stop. Specifically run this test if needed"]
     fn server_connect_receive_send() {
         println!("started");
         let output = tokio_test::block_on(
@@ -154,7 +155,6 @@ mod tests {
                 "localhost:8080", // connect to localhost
                 ExampleRequestParser {}, // parse a string from request
                 |request| -> String { // just echo the request
-                    assert_eq!(request, "Hello World!".to_string()); // TODO: remove this
                     request
                 },
             ).start()
@@ -164,6 +164,7 @@ mod tests {
 
 
     #[test]
+    #[ignore = "server graceful shutdown not implemented yet causing the test to never stop. Specifically run this test if needed"]
     fn client_connect_receive_send() {
         // wait until server is up
         thread::sleep(time::Duration::from_secs_f32(0.5));
