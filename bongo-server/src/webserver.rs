@@ -6,6 +6,17 @@ use std::sync::{Arc};
 ///
 /// A `Webserver` handling tcp connections in an asynchronous multithreaded manner using the tokio library
 ///
+/// # Implementation details:
+///
+/// The server is an asynchronous TCP server.
+/// The server works with a small header of 32-bits that are read from the stream at first and
+/// interpreted as a u32 value. This header defines the size of the following payload.
+/// This means that afterwards a payload of this size will be read from the stream.
+/// Then the payload gets passed to the `request_parser` and the resulting `Request` gets passed to
+/// the `handle_request` callback. The result of the `handle_request` callback is transmitted the
+/// same way to the client via the TCP-stream. This means the response is evaluated, a header with the
+/// size of the response is assembled, and the header and response together are send over the TCP-stream.
+///
 pub struct Webserver<Request>
     where Request: Send {
     address: String,
@@ -26,8 +37,13 @@ unsafe impl<Request: Send> Sync for Webserver<Request> {}
 /// Structs that implement `RequestParser<T>` can be used to parse requests of type `T`
 ///
 pub trait RequestParser<Request>
-// currently requests only require to be `Send`
     where Request: Send {
+    ///
+    /// `parse` constructs a Request from a byte array and this way specifies the data format of the
+    /// payload transmitted from server to client.
+    ///
+    /// Currently requests only require to be `Send`.
+    ///
     fn parse(&self, bytes: &[u8]) -> Option<Request>;
 }
 
@@ -36,9 +52,10 @@ impl<Request: 'static + Send> Webserver<Request> {
     /// Creates a new instance of `Webserver`
     ///
     /// * `address` - An address consisting of HOSTNAME:PORT that the server connects on.
-    /// * `request_parser` - A parser that is used to parse individual `Request`s from the TCP-stream.
-    /// * `handle_request` - A callback function or closure that is called every time a `Request`
-    /// has been parsed from the TCP-stream. This function gets passed the parsed request as an argument.
+    /// * `request_parser` - A parser that is used to parse individual `Request`s from a received String.
+    /// * `handle_request` - A callback function or closure that is called every time a a request has
+    /// been received on the TCP stream and has been parsed into a `Request`. This function
+    /// gets passed the parsed request as an argument.
     /// The returned string will be transmitted via the TCP-stream back to the client of this connection.
     ///
     pub fn new<F, P>(address: &str, request_parser: P, handle_request: F) -> Webserver<Request>

@@ -28,13 +28,8 @@ impl BongoRequestParser {
 // TODO: unit test
 
 impl RequestParser<BongoRequest> for BongoRequestParser {
-    ///
-    /// TODO: update documentation
-    ///
-    ///
     fn parse(&self, bytes: &[u8]) -> Option<BongoRequest> {
         // unwrapping is safe assuming all bytes are ASCII values
-
         let result: Result<BongoRequest> = serde_json::from_str(&String::from_utf8(bytes.to_vec()).unwrap());
         return if result.is_ok() {
             Some(result.unwrap())
