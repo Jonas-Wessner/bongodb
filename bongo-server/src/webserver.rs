@@ -189,16 +189,20 @@ mod tests {
         let mut stream = TcpStream::connect("localhost:8080").unwrap();
 
         let request = "Hello World!";
+        // IMPORTANT: cast to u32 before converting to bytes, because len() returns usize, which has
+        // a different byte representation
         let size = &(request.len() as u32).to_be_bytes();
 
         stream.write(&[size, request.as_bytes()].concat()).unwrap();
 
         let mut size: [u8; 4] = [0; 4];
         stream.read_exact(&mut size).unwrap();
-        let size = i32::from_be_bytes(size) as usize;
+        let size = u32::from_be_bytes(size) as usize;
 
         assert_eq!("Hello World!".len(), size);
 
+        // do not use vec! macro, because we do not want to unnecessarily initialize the
+        // (possibly large) vector as it is anyways just a buffer that is written to afterwards.
         let mut response_buffer = Vec::with_capacity(size);
         unsafe { response_buffer.set_len(size); } // resize buffer over allocated memory
 
