@@ -13,6 +13,7 @@ use sqlparser::parser::ParserError;
 #[derive(PartialEq)]
 pub enum BongoError {
     SqlSyntaxError(String),
+    EmptySqlStatementError,
     UnsupportedFeatureError(String),
     // an error that represents a bug in BongoDB
     InternalError(String),

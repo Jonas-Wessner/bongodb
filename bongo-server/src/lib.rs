@@ -26,7 +26,7 @@ impl BongoServer {
         BongoError::WebServerError(
             Webserver::new(
                 address,
-                BongoRequestParser::new(1024),
+                BongoRequestParser::new(),
                 move |request: BongoRequest| -> String {
                     let serialized_response = executor.execute(&request).serialize();
                     println!("request: '{}'", request.sql);
