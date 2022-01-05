@@ -90,11 +90,16 @@ impl<Request: 'static + Send> Webserver<Request> {
 
             let (read_half, mut write_half) = socket.split();
             let mut reader = BufReader::new(read_half);
+            let mut size = [1; 4];
 
             loop {
-                match reader.read_u32().await {
-                    Ok(size) => {
+                match reader.read_exact(&mut size).await {
+                    Ok(_) => {
+                        let size = i32::from_be_bytes(size);
+
                         let mut buffer = Vec::with_capacity(size as usize);
+                        unsafe { buffer.set_len(size as usize); } // extend size of vector over the allocated space#
+
                         match reader.read_exact(&mut buffer).await {
                             Ok(_) => {
                                 let response: String;
@@ -106,7 +111,7 @@ impl<Request: 'static + Send> Webserver<Request> {
                                         response = "Request format could not be parsed, request is ignored.".to_string();
                                     }
                                 }
-                                let size = &response.len().to_be_bytes();
+                                let size = &(response.len() as u32).to_be_bytes();
                                 write_half.write_all(&[size, response.as_bytes()].concat()).await.unwrap();
                                 write_half.flush().await.unwrap();
                             }
@@ -123,6 +128,65 @@ impl<Request: 'static + Send> Webserver<Request> {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::webserver::{Webserver, RequestParser};
+    use std::io::prelude::*;
+    use std::net::TcpStream;
+    use std::{thread, time};
+
+    pub struct ExampleRequestParser {}
+
+    impl RequestParser<String> for ExampleRequestParser {
+        fn parse(&self, bytes: &[u8]) -> Option<String> {
+            Some(String::from_utf8(bytes.to_vec()).unwrap())
+        }
+    }
+
+    #[test]
+    fn server_connect_receive_send() {
+        println!("started");
+        let output = tokio_test::block_on(
+            Webserver::new(
+                "localhost:8080", // connect to localhost
+                ExampleRequestParser {}, // parse a string from request
+                |request| -> String { // just echo the request
+                    assert_eq!(request, "Hello World!".to_string()); // TODO: remove this
+                    request
+                },
+            ).start()
+        );
+        println!("{}", output);
+    }
+
+
+    #[test]
+    fn client_connect_receive_send() {
+        // wait until server is up
+        thread::sleep(time::Duration::from_secs_f32(0.5));
+
+        let mut stream = TcpStream::connect("localhost:8080").unwrap();
+
+        let request = "Hello World!";
+        let size = &(request.len() as u32).to_be_bytes();
+
+        stream.write(&[size, request.as_bytes()].concat()).unwrap();
+
+        let mut size: [u8; 4] = [0; 4];
+        stream.read_exact(&mut size).unwrap();
+        let size = i32::from_be_bytes(size) as usize;
+
+        assert_eq!("Hello World!".len(), size);
+
+        let mut response_buffer = Vec::with_capacity(size);
+        unsafe { response_buffer.set_len(size); } // resize buffer over allocated memory
+
+        stream.read_exact(&mut response_buffer).unwrap();
+
+        assert_eq!("Hello World!".to_string(), String::from_utf8(response_buffer).unwrap());
     }
 }
 
