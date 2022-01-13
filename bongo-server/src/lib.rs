@@ -3,19 +3,14 @@
 pub mod util;
 pub mod sql_parser;
 mod statement;
-mod types;
-mod serialize;
-mod bongo_request;
-mod bongo_response;
-mod webserver;
 mod executor;
 
 
-use crate::webserver::{Webserver};
-use crate::bongo_request::{BongoRequestParser, BongoRequest};
-use crate::serialize::{Serialize};
+use bongo_core::bongo_request::{BongoRequest, BongoRequestParser};
+use bongo_core::types::BongoError;
+use webserver::Webserver;
+use bongo_core::serialize::Serialize;
 use crate::executor::Executor;
-use crate::types::BongoError;
 
 pub struct BongoServer {}
 

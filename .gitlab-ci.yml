@@ -7,22 +7,22 @@ rust-latest:
   stage: build
   image: rust:latest
   rules:
-    # if its a (merge-)commit on the main branch
+    # if it's a (merge-)commit on the main branch
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     # if merge request exists for this branch
     - if: $CI_MERGE_REQUEST_IID
   script:
-#    bongo-server builds currently with nightly build channel
-#    - cargo build --verbose --manifest-path bongo-server/Cargo.toml
-#    - cargo test --verbose --manifest-path bongo-server/Cargo.toml
     - cargo build --verbose --manifest-path bongo-lib/Cargo.toml
     - cargo test --verbose --manifest-path bongo-lib/Cargo.toml
 
+#    bongo-server builds currently with nightly build channel
+#    bongo-core builds currently with nightly build channel
+#    bongo-webserver builds currently with nightly build channel
 rust-nightly:
   stage: build
   image: rustlang/rust:nightly
   rules:
-    # if its a (merge-)commit on the main branch
+    # if it's a (merge-)commit on the main branch
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     # if merge request exists for this branch
     - if: $CI_MERGE_REQUEST_IID
@@ -31,4 +31,8 @@ rust-nightly:
     - cargo test --verbose --manifest-path bongo-server/Cargo.toml
     - cargo build --verbose --manifest-path bongo-lib/Cargo.toml
     - cargo test --verbose --manifest-path bongo-lib/Cargo.toml
+    - cargo build --verbose --manifest-path bongo-core/Cargo.toml
+    - cargo test --verbose --manifest-path bongo-core/Cargo.toml
+    - cargo build --verbose --manifest-path webserver/Cargo.toml
+    - cargo test --verbose --manifest-path webserver/Cargo.toml
 

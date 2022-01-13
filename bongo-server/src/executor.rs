@@ -1,7 +1,7 @@
-use crate::bongo_response::{BongoResponse};
-use crate::bongo_request::BongoRequest;
+use bongo_core::bongo_request::BongoRequest;
+use bongo_core::bongo_response::BongoResponse;
+use bongo_core::types::BongoLiteral;
 use crate::sql_parser::parser::SqlParser;
-use crate::types::BongoLiteral;
 
 ///
 /// An `Executor` can execute a `BongoRequest`

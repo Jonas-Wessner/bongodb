@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Result};
-
-use crate::webserver::RequestParser;
+use webserver::RequestParser;
 
 ///
 /// A Request from a bongo client to a `BongoServer`
@@ -42,7 +41,7 @@ impl RequestParser<BongoRequest> for BongoRequestParser {
 #[cfg(test)]
 mod tests{
     use crate::bongo_request::{BongoRequestParser, BongoRequest};
-    use crate::webserver::RequestParser;
+    use webserver::RequestParser;
 
     #[test]
     fn parse_simple_request() {

@@ -1,10 +1,9 @@
 use duplicate::duplicate;
-
 use std::convert::TryFrom;
 use sqlparser::ast::{ColumnDef as SqlParserColDef, DataType};
+use sqlparser::parser::ParserError;
 
 use crate::serialize::Serialize;
-use sqlparser::parser::ParserError;
 
 ///
 /// `BongoError` is the Error class used by the `BongoDB` server.
@@ -113,8 +112,8 @@ impl TryFrom<&DataType> for BongoDataType {
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct ColumnDef {
-    pub(crate) name: String,
-    pub(crate) data_type: BongoDataType,
+    pub name: String,
+    pub data_type: BongoDataType,
 }
 
 ///
@@ -141,7 +140,7 @@ impl TryFrom<&SqlParserColDef> for ColumnDef {
 ///
 /// `Row` represents one row that is returned in a `BongoResponse::Success` variant.
 ///
-pub(crate) type Row = Vec<BongoLiteral>;
+pub type Row = Vec<BongoLiteral>;
 
 
 ///

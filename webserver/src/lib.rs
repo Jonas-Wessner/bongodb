@@ -150,7 +150,7 @@ impl<Request: 'static + Send> Webserver<Request> {
 
 #[cfg(test)]
 mod tests {
-    use crate::webserver::{Webserver, RequestParser};
+    use crate::{Webserver, RequestParser};
     use std::io::prelude::*;
     use std::net::TcpStream;
     use std::{thread, time};
@@ -211,4 +211,3 @@ mod tests {
         assert_eq!("Hello World!".to_string(), String::from_utf8(response_buffer).unwrap());
     }
 }
-

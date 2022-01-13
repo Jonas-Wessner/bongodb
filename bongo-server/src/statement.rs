@@ -1,6 +1,6 @@
-use crate::types::{BongoLiteral, ColumnDef, Row, BongoError};
 use std::convert::TryFrom;
 use sqlparser::ast::{Expr as SqlParserExpr, Value, BinaryOperator as SqlParserBinOp, BinaryOperator, Assignment as SqlParserAssignment, SelectItem as SqlParserSelectItem, OrderByExpr};
+use bongo_core::types::{BongoError, BongoLiteral, ColumnDef, Row};
 
 ///
 /// `Assignment` is a structure that represents an assignment of a value to a column.
