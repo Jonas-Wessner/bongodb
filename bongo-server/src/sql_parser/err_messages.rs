@@ -1,4 +1,4 @@
-use crate::types::BongoError;
+use bongo_core::types::BongoError;
 
 ///
 /// This module contains a couple of helper functions that are used to reduce code duplication

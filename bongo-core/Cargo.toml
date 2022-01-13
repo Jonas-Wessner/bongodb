@@ -1,13 +1,13 @@
 [package]
-name = "bongo-server"
+name = "bongo-core"
 version = "0.1.0"
 edition = "2021"
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
-tokio = { version = "1", features = ["full"] }
-duplicate = "0.3.0"
-sqlparser = "0.13.0"
 serde_json = "1.0.74"
 serde = { version = "1.0", features = ["derive"] }
-bongo-core = {path = "../bongo-core"}
+duplicate = "0.3.0"
+sqlparser = "0.13.0"
 webserver = {path = "../webserver"}

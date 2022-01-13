@@ -2,9 +2,9 @@ use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::ast::{Statement as Ast, Query, SetExpr, Expr, TableFactor, TableWithJoins, OrderByExpr, ObjectName, Ident, ColumnDef, ObjectType};
 use std::convert::TryFrom;
+use bongo_core::types::{BongoError, ColumnDef as BongoColDef, Row};
 
 use crate::statement::{Statement, SelectItem as BongoSelectItem, Order, Expr as BongoExpr, Assignment as BongoAssignment};
-use crate::types::{Row, ColumnDef as BongoColDef, BongoError};
 use crate::sql_parser::err_messages::{*};
 use crate::util::conversions::{TryConvertAllExt, TryConvertOption};
 
@@ -248,9 +248,9 @@ impl SqlParser {
 #[cfg(test)]
 mod tests {
     mod select {
+        use bongo_core::types::BongoLiteral;
         use crate::sql_parser::parser::SqlParser;
         use crate::statement::{Statement, SelectItem, Order, Expr as BongoExpr, BinOp as BongoBinOp};
-        use crate::types::BongoLiteral;
 
         #[test]
         fn all_features_together() {
@@ -367,9 +367,9 @@ mod tests {
     }
 
     mod insert {
+        use bongo_core::types::BongoLiteral;
         use super::super::SqlParser;
         use crate::statement::Statement;
-        use crate::types::BongoLiteral;
 
         #[test]
         fn mutilple_rows() {
@@ -395,9 +395,9 @@ mod tests {
     }
 
     mod update {
+        use bongo_core::types::BongoLiteral;
         use super::super::SqlParser;
         use crate::statement::{Statement, Assignment};
-        use crate::types::BongoLiteral;
 
         #[test]
         fn multiple_set_expr() {
@@ -427,9 +427,9 @@ mod tests {
     }
 
     mod delete {
+        use bongo_core::types::BongoLiteral;
         use super::super::SqlParser;
         use crate::statement::{Statement, Expr as BongoExpr, BinOp as BongoBinOp};
-        use crate::types::{BongoLiteral};
 
         #[test]
         fn nested_condition() {
@@ -477,7 +477,7 @@ mod tests {
     mod create_table {
         use super::super::SqlParser;
         use crate::statement::Statement;
-        use crate::types::{ColumnDef as BongoColDef, BongoDataType};
+        use bongo_core::types::{ColumnDef as BongoColDef, BongoDataType};
 
         #[test]
         fn all_data_types_once() {
@@ -565,8 +565,8 @@ mod tests {
     }
 
     mod diverse {
+        use bongo_core::types::BongoError::EmptySqlStatementError;
         use crate::sql_parser::parser::SqlParser;
-        use crate::types::BongoError::EmptySqlStatementError;
 
         #[test]
         fn empty_statement(){
