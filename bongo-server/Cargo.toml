@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bongo-core = {path = "../bongo-core"}
+webserver = {path = "../webserver"}
 tokio = { version = "1", features = ["full"] }
 duplicate = "0.3.0"
 sqlparser = "0.13.0"
 serde_json = "1.0.74"
 serde = { version = "1.0", features = ["derive"] }
-bongo-core = {path = "../bongo-core"}
-webserver = {path = "../webserver"}
+bincode = "1.3.3"

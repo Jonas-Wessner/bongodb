@@ -16,3 +16,4 @@ Cargo.lock
 
 # IntelliJ IDEAs
 .idea/
+test_temp/

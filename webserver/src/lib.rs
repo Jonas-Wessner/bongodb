@@ -1,7 +1,6 @@
-use tokio::net::{TcpListener};
-use tokio::io::{BufReader, AsyncWriteExt, AsyncReadExt};
-use std::sync::{Arc};
-
+use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpListener;
 
 ///
 /// A `Webserver` handling tcp connections in an asynchronous multithreaded manner using the tokio library
@@ -18,7 +17,9 @@ use std::sync::{Arc};
 /// size of the response is assembled, and the header and response together are send over the TCP-stream.
 ///
 pub struct Webserver<Request>
-    where Request: Send {
+where
+    Request: Send,
+{
     address: String,
     // as the size of RequestParser and Fn(Request) is unknown at compile time they have to be
     // stored on the heap using Box
@@ -32,12 +33,13 @@ unsafe impl<Request: Send> Send for Webserver<Request> {}
 
 unsafe impl<Request: Send> Sync for Webserver<Request> {}
 
-
 ///
 /// Structs that implement `RequestParser<T>` can be used to parse requests of type `T`
 ///
 pub trait RequestParser<Request>
-    where Request: Send {
+where
+    Request: Send,
+{
     ///
     /// `parse` constructs a Request from a byte array and this way specifies the data format of the
     /// payload transmitted from server to client.
@@ -59,8 +61,10 @@ impl<Request: 'static + Send> Webserver<Request> {
     /// The returned string will be transmitted via the TCP-stream back to the client of this connection.
     ///
     pub fn new<F, P>(address: &str, request_parser: P, handle_request: F) -> Webserver<Request>
-        where F: 'static + (Fn(Request) -> String) + Send + Sync,
-              P: 'static + RequestParser<Request> + Send + Sync {
+    where
+        F: 'static + (Fn(Request) -> String) + Send + Sync,
+        P: 'static + RequestParser<Request> + Send + Sync,
+    {
         Self {
             address: String::from(address),
             request_parser: Box::new(request_parser),
@@ -76,10 +80,12 @@ impl<Request: 'static + Send> Webserver<Request> {
 
         match TcpListener::bind(&self.address).await {
             Ok(contained_listener) => {
-                println!("BongoServer started on {}", &self.address);
+                println!("Webserver started on {}", &self.address);
                 listener = contained_listener;
             }
-            Err(_) => { return String::from("Failed to bind to address `") + &self.address + "`"; }
+            Err(_) => {
+                return String::from("Failed to bind to address `") + &self.address + "`";
+            }
         }
 
         let caller = Arc::new(self);
@@ -115,7 +121,9 @@ impl<Request: 'static + Send> Webserver<Request> {
                         let size = i32::from_be_bytes(size);
 
                         let mut buffer = Vec::with_capacity(size as usize);
-                        unsafe { buffer.set_len(size as usize); } // extend size of vector over the allocated space#
+                        unsafe {
+                            buffer.set_len(size as usize);
+                        } // extend size of vector over the allocated space#
 
                         match reader.read_exact(&mut buffer).await {
                             Ok(_) => {
@@ -129,7 +137,10 @@ impl<Request: 'static + Send> Webserver<Request> {
                                     }
                                 }
                                 let size = &(response.len() as u32).to_be_bytes();
-                                write_half.write_all(&[size, response.as_bytes()].concat()).await.unwrap();
+                                write_half
+                                    .write_all(&[size, response.as_bytes()].concat())
+                                    .await
+                                    .unwrap();
                                 write_half.flush().await.unwrap();
                             }
                             Err(_) => {
@@ -150,7 +161,7 @@ impl<Request: 'static + Send> Webserver<Request> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Webserver, RequestParser};
+    use crate::{RequestParser, Webserver};
     use std::io::prelude::*;
     use std::net::TcpStream;
     use std::{thread, time};
@@ -169,16 +180,17 @@ mod tests {
         println!("started");
         let output = tokio_test::block_on(
             Webserver::new(
-                "localhost:8080", // connect to localhost
+                "localhost:8080",        // connect to localhost
                 ExampleRequestParser {}, // parse a string from request
-                |request| -> String { // just echo the request
+                |request| -> String {
+                    // just echo the request
                     request
                 },
-            ).start()
+            )
+            .start(),
         );
         println!("{}", output);
     }
-
 
     #[test]
     #[ignore = "server graceful shutdown not implemented yet causing the test to never stop. Specifically run this test if needed"]
@@ -204,10 +216,15 @@ mod tests {
         // do not use vec! macro, because we do not want to unnecessarily initialize the
         // (possibly large) vector as it is anyways just a buffer that is written to afterwards.
         let mut response_buffer = Vec::with_capacity(size);
-        unsafe { response_buffer.set_len(size); } // resize buffer over allocated memory
+        unsafe {
+            response_buffer.set_len(size);
+        } // resize buffer over allocated memory
 
         stream.read_exact(&mut response_buffer).unwrap();
 
-        assert_eq!("Hello World!".to_string(), String::from_utf8(response_buffer).unwrap());
+        assert_eq!(
+            "Hello World!".to_string(),
+            String::from_utf8(response_buffer).unwrap()
+        );
     }
 }

@@ -1,13 +1,11 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Result};
+use serde_json::Result;
 use webserver::RequestParser;
 
 ///
 /// A Request from a bongo client to a `BongoServer`
 ///
-#[derive(Serialize, Deserialize)]
-#[derive(PartialEq)]
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct BongoRequest {
     pub sql: String,
 }
@@ -29,7 +27,8 @@ impl BongoRequestParser {
 impl RequestParser<BongoRequest> for BongoRequestParser {
     fn parse(&self, bytes: &[u8]) -> Option<BongoRequest> {
         // unwrapping is safe assuming all bytes are ASCII values
-        let result: Result<BongoRequest> = serde_json::from_str(&String::from_utf8(bytes.to_vec()).unwrap());
+        let result: Result<BongoRequest> =
+            serde_json::from_str(&String::from_utf8(bytes.to_vec()).unwrap());
         return if result.is_ok() {
             Some(result.unwrap())
         } else {
@@ -39,8 +38,8 @@ impl RequestParser<BongoRequest> for BongoRequestParser {
 }
 
 #[cfg(test)]
-mod tests{
-    use crate::bongo_request::{BongoRequestParser, BongoRequest};
+mod tests {
+    use crate::bongo_request::{BongoRequest, BongoRequestParser};
     use webserver::RequestParser;
 
     #[test]
@@ -49,8 +48,8 @@ mod tests{
 
         let result = BongoRequestParser::new().parse(request.as_bytes());
 
-        let expected = Some(BongoRequest{
-            sql: "SELECT * FROM table_1;".to_string()
+        let expected = Some(BongoRequest {
+            sql: "SELECT * FROM table_1;".to_string(),
         });
 
         assert_eq!(expected, result);
@@ -75,8 +74,8 @@ mod tests{
 
         let result = BongoRequestParser::new().parse(request.as_bytes());
 
-        let expected = Some(BongoRequest{
-            sql: "SELECT * FROM \"table_1\";".to_string()
+        let expected = Some(BongoRequest {
+            sql: "SELECT * FROM \"table_1\";".to_string(),
         });
 
         assert_eq!(expected, result);
