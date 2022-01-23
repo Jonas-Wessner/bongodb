@@ -1,15 +1,7 @@
 #![feature(iter_intersperse)]
 
 pub mod bongo_request;
-pub mod bongo_response;
-pub mod serialize;
+pub mod bongo_result;
 pub mod types;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
+pub mod bytes_on_disc;
+pub mod conversions;

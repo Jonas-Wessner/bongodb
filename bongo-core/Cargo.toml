@@ -11,3 +11,4 @@ serde = { version = "1.0", features = ["derive"] }
 duplicate = "0.3.0"
 sqlparser = "0.13.0"
 webserver = {path = "../webserver"}
+object = "0.27.1"
