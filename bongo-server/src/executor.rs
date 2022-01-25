@@ -135,7 +135,7 @@ impl Executor {
                 // unwrap is safe, because BongoServer makes sure only utf8 directories are passed in
                 return Err(BongoError::DatabaseNotFoundError(format!(
                     "location: '{}'",
-                    path.to_str().unwrap()
+                    location = path.to_str().unwrap()
                 )));
             }
         }
@@ -316,7 +316,7 @@ impl Executor {
                 SelectItem::ColumnName(name) => {
                     let loc = table.cols.iter().position(|col_def| { col_def.name == name });
                     if loc.is_none() {
-                        return Err(BongoError::SqlRuntimeError(format!("The column '{}' does not exist.", name)));
+                        return Err(BongoError::SqlRuntimeError(format!("The column '{name}' does not exist.")));
                     }
                     selected_col_indices.push(loc.unwrap());
                 }
@@ -943,7 +943,6 @@ impl DiscIndexer {
                                 let mut idx = map.clone();
                                 idx.remove(&idx_expr.val);
                                 Self { indices: Self::idx_to_indices(idx), expr: None }
-
                             }
                         }
                     }
@@ -1271,10 +1270,10 @@ mod tests {
             let db_root = PathBuf::from("test_temp/all_features_together");
             let table_name = "table_1";
 
-            let sql = "SELECT col_1, col_3 \
-               FROM table_1 \
+            let sql = format!("SELECT col_1, col_3 \
+               FROM {table_name} \
                WHERE col_2 = 'c❤' OR col_3 \
-               ORDER BY col_1 DESC";
+               ORDER BY col_1 DESC");
             let request = BongoRequest { sql: sql.to_string() };
             // should return the first two columns in the opposite order and only col_1 and col_3
             let expected = get_example_rows().into_iter()
@@ -1308,10 +1307,10 @@ mod tests {
             let db_root = PathBuf::from("test_temp/where_clause_false");
             let table_name = "table_1";
 
-            let sql = "SELECT col_1, col_3 \
-               FROM table_1 \
+            let sql = format!("SELECT col_1, col_3 \
+               FROM {table_name} \
                WHERE false \
-               ORDER BY col_1 DESC";
+               ORDER BY col_1 DESC");
             let request = BongoRequest { sql: sql.to_string() };
             // should return the first two columns in the opposite order and only col_1 and col_3
             let expected: Vec<Row> = vec![];
@@ -1339,9 +1338,9 @@ mod tests {
             let db_root = PathBuf::from("test_temp/wildcard_no_where");
             let table_name = "table_1";
 
-            let sql = "SELECT * \
-               FROM table_1 \
-               ORDER BY col_1 DESC";
+            let sql = format!("SELECT * \
+               FROM {table_name} \
+               ORDER BY col_1 DESC");
             let request = BongoRequest { sql: sql.to_string() };
             // should return all columns in reverse order
             let expected: Vec<Row> = get_example_rows().into_iter().rev().collect();
@@ -1369,9 +1368,9 @@ mod tests {
             let db_root = PathBuf::from("test_temp/order_by_non_selected_col");
             let table_name = "table_1";
 
-            let sql = "SELECT col_2, col_3 \
-               FROM table_1 \
-               ORDER BY col_1 DESC";
+            let sql = format!("SELECT col_2, col_3 \
+               FROM {table_name} \
+               ORDER BY col_1 DESC");
             let request = BongoRequest { sql: sql.to_string() };
             // should return columns 2 and 3 in reverse order
             let expected: Vec<Row> = get_example_rows().into_iter()
@@ -1404,9 +1403,9 @@ mod tests {
             let db_root = PathBuf::from("test_temp/order_asc");
             let table_name = "table_1";
 
-            let sql = "SELECT * \
-               FROM table_1 \
-               ORDER BY col_2 ASC"; // col_2 is ordered desc on insert
+            let sql = format!("SELECT * \
+               FROM {table_name} \
+               ORDER BY col_2 ASC"); // col_2 is ordered desc on insert
             let request = BongoRequest { sql: sql.to_string() };
             // should return all columns in reverse order
             let expected: Vec<Row> = get_example_rows().into_iter().rev().collect();
@@ -1434,9 +1433,9 @@ mod tests {
             let db_root = PathBuf::from("test_temp/eq_indexable_where");
             let table_name = "table_1";
 
-            let sql = "SELECT * \
-               FROM table_1 \
-               WHERE col_1 = 3";
+            let sql = format!("SELECT * \
+               FROM {table_name} \
+               WHERE col_1 = 3");
             let request = BongoRequest { sql: sql.to_string() };
             // should return only 3rd row
             let expected: Vec<Row> = vec![get_example_rows().remove(2)];
@@ -1477,9 +1476,9 @@ mod tests {
 
             create_table_and_delete_nth_row(table_name, &db_root, 3);
 
-            let select = "SELECT * \
-                               FROM table_1 \
-                               ORDER BY col_1 ASC;";
+            let select = format!("SELECT * \
+                               FROM {table_name} \
+                               ORDER BY col_1 ASC;");
 
             let request = BongoRequest { sql: select.to_string() };
 
@@ -1508,8 +1507,8 @@ mod tests {
 
             create_table_and_delete_nth_row(table_name, &db_root, 3);
 
-            let insert = "INSERT INTO table_1 (col_1, col_2, col_3) VALUES \
-                          (42, 'x', true);";
+            let insert = format!("INSERT INTO {table_name} (col_1, col_2, col_3) VALUES \
+                          (42, 'x', true);");
             let insert_req = BongoRequest { sql: insert.to_string() };
 
             {
@@ -1525,9 +1524,9 @@ mod tests {
                 }
             } // drop executors before cleanup to avoid executor flushing on non existing dir.
 
-            let select = "SELECT * \
-                               FROM table_1 \
-                               ORDER BY col_1 ASC;";
+            let select = format!("SELECT * \
+                               FROM {table_name} \
+                               ORDER BY col_1 ASC;");
 
             let select_req = BongoRequest { sql: select.to_string() };
 
@@ -1554,9 +1553,8 @@ mod tests {
         fn create_table_and_delete_nth_row(table_name: &str, db_root: &PathBuf, n: i32) {
             let db_root = PathBuf::from(db_root);
 
-            let delete = format!("DELETE FROM table_1 \
-                               WHERE col_1 = {};",
-                                 n);
+            let delete = format!("DELETE FROM {table_name} \
+                               WHERE col_1 = {n};");
 
             let request = BongoRequest { sql: delete };
 
@@ -1586,8 +1584,8 @@ mod tests {
             let db_root = PathBuf::from("test_temp/update_including_index");
             let table_name = "table_1";
 
-            let update = "UPDATE table_1 \
-                                SET col_1 = 42, col_3 = NULL;";
+            let update = format!("UPDATE {table_name} \
+                                SET col_1 = 42, col_3 = NULL;");
             let select = "SELECT * FROM table_1 \
                                ORDER BY col_2 DESC ;";
             let update_req = BongoRequest { sql: update.to_string() };
@@ -1625,8 +1623,8 @@ mod tests {
             let db_root = PathBuf::from("test_temp/update_with_wrong_d_type");
             let table_name = "table_1";
 
-            let update = "UPDATE table_1 \
-                                SET col_1 = 'col_1 is datatype int...';";
+            let update = format!("UPDATE {table_name} \
+                                SET col_1 = 'col_1 is datatype int...';");
             let request = BongoRequest { sql: update.to_string() };
             let result;
 
@@ -1648,13 +1646,13 @@ mod tests {
             let db_root = PathBuf::from("test_temp/update_only_one");
             let table_name = "table_1";
 
-            let update = "UPDATE table_1 \
+            let update = format!("UPDATE {table_name} \
                                 SET col_2 = 'updated' \
-                                WHERE col_1 = 3;";
-            let select = "SELECT * FROM table_1 \
-                               ORDER BY col_1 ASC ;";
-            let update_req = BongoRequest { sql: update.to_string() };
-            let select_req = BongoRequest { sql: select.to_string() };
+                                WHERE col_1 = 3;");
+            let select = format!("SELECT * FROM {table_name} \
+                               ORDER BY col_1 ASC ;");
+            let update_req = BongoRequest { sql: update };
+            let select_req = BongoRequest { sql: select };
 
             let expected = get_example_rows().into_iter()
                 .enumerate()
@@ -1688,13 +1686,12 @@ mod tests {
     ///
     fn create_example_table(ex: &mut Executor, table_name: &str) {
         let request = BongoRequest {
-            sql: format!("CREATE TABLE {} \
+            sql: format!("CREATE TABLE {table_name} \
                                 ( \
                                     col_1 INT, \
                                     col_2 VARCHAR(256), \
                                     col_3 BOOLEAN, \
-                                ); ",
-                         table_name)
+                                ); ")
         };
 
         let result = ex.execute(&request);
@@ -1708,12 +1705,11 @@ mod tests {
     /// Inserts some rows into the example table created with `create_example_table`.
     ///
     fn insert_example_rows(ex: &mut Executor, table_name: &str) {
-        let sql = format!("INSERT INTO {} (col_1, col_2, col_3) VALUES
+        let sql = format!("INSERT INTO {table_name} (col_1, col_2, col_3) VALUES
                               (1, 'd❤', true),
                               (2, 'c❤', false),
                               (3, 'b❤', Null),
-                              (4, 'a❤', false);",
-                          table_name);
+                              (4, 'a❤', false);");
         let request = BongoRequest { sql };
 
         ex.execute(&request).unwrap();
