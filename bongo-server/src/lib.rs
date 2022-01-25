@@ -48,7 +48,7 @@ impl BongoServer {
                 move |request: BongoRequest| -> String {
                     let serialized_response = ex.get().execute(&request).to_json();
                     println!("request: '{}'", request.sql);
-                    println!("response: '{}'", serialized_response);
+                    println!("response: '{serialized_response}'");
                     serialized_response
                 },
             )

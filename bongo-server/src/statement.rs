@@ -313,9 +313,9 @@ impl Expr {
                 op.apply(&left_val, &right_val)
             }
             Expr::Identifier(name) => {
-                let pos = cols.iter().position(|n| { n == &name });
+                let pos = cols.iter().position(|n| { n == name });
                 if pos.is_none() {
-                    return Err(BongoError::SqlRuntimeError(format!("Column '{}' does not exist.", name)));
+                    return Err(BongoError::SqlRuntimeError(format!("Column '{name}' does not exist.")));
                 }
                 // return value in this column
                 Ok(row[pos.unwrap()].clone())

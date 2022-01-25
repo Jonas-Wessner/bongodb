@@ -144,7 +144,7 @@ impl<Request: 'static + Send> Webserver<Request> {
                                 write_half.flush().await.unwrap();
                             }
                             Err(_) => {
-                                println!("Reading request with size of {} bytes not successful. Therefore connection closed.", size);
+                                println!("Reading request with size of {size} bytes not successful. Therefore connection closed.");
                                 break;
                             }
                         }
@@ -189,7 +189,7 @@ mod tests {
             )
             .start(),
         );
-        println!("{}", output);
+        println!("{output}");
     }
 
     #[test]
