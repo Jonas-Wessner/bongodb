@@ -921,7 +921,7 @@ impl DiscIndexer {
             None => {
                 // not indexable and no condition -> all indices that are in map + None
                 Self {
-                    indices: Self::idx_to_indices(map),
+                    indices: Self::idx_to_indices(map.clone()),
                     expr: None,
                 }
             }
@@ -940,22 +940,25 @@ impl DiscIndexer {
                             IndexBinOp::NotEq => {
                                 // indexable with NotEq operator -> return all indexes but the ones that match the index
                                 // and none, because expr is true for all values at those indices
-                                Self { indices: Self::idx_to_indices(map), expr: None }
+                                let mut idx = map.clone();
+                                idx.remove(&idx_expr.val);
+                                Self { indices: Self::idx_to_indices(idx), expr: None }
+
                             }
                         }
                     }
                     Err(_) => {
                         // not indexable -> all indices in map + Some(expression)
                         // because the expression must still be evaluated for each value
-                        Self { indices: Self::idx_to_indices(map), expr: Some(expr) }
+                        Self { indices: Self::idx_to_indices(map.clone()), expr: Some(expr) }
                     }
                 }
             }
         }
     }
 
-    fn idx_to_indices(idx: &HashMap<BongoLiteral, Vec<u64>>) -> Vec<u64> {
-        idx.clone().into_iter()
+    fn idx_to_indices(idx: HashMap<BongoLiteral, Vec<u64>>) -> Vec<u64> {
+        idx.into_iter()
             .map(|(_lit, indices)| { indices })
             .collect::<Vec<Vec<u64>>>()
             .concat()
