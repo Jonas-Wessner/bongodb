@@ -2,7 +2,7 @@ use bongo_server::BongoServer;
 
 #[tokio::main]
 async fn main() {
-    match BongoServer::start_new("localhost:8080", "bongo_data", true, false).await {
+    match BongoServer::start_new("localhost:8080", "bongo_data", true, true).await {
         error => {
             // BongoServer::start_new only returns in error case
             panic!(

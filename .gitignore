@@ -17,3 +17,6 @@ Cargo.lock
 # IntelliJ IDEAs
 .idea/
 test_temp/
+
+# Data
+bongo-server/bongo_data/
