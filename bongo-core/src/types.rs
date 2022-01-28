@@ -13,11 +13,11 @@ use crate::types::BongoError::InternalError;
 ///
 /// Implementers of this trait allow to extract column names from themselves.
 ///
-pub trait GetColNamesExt<'a> {
+pub trait GetColNamesExt {
     ///
     /// Returns the names of all contained columns.
     ///
-    fn get_col_names(&'a self) -> Vec<&'a str>;
+    fn get_col_names(&self) -> Vec<String>;
 }
 
 pub trait GetDTypesExt<'a> {
@@ -75,6 +75,10 @@ pub enum BongoLiteral {
     Null,
 }
 
+pub trait FromBongoLiteral {
+    fn from_bongo_literal(literal: BongoLiteral) -> Self;
+}
+
 impl BongoLiteral {
     ///
     /// Converts a `BongoLiteral` to a boolean value if possible.
@@ -85,7 +89,10 @@ impl BongoLiteral {
             return Ok(*val);
         }
 
-        Err(BongoError::SqlRuntimeError(format!("Cannot convert '{:?}' to boolean value.", self)))
+        Err(BongoError::SqlRuntimeError(format!(
+            "Cannot convert '{:?}' to boolean value.",
+            self
+        )))
     }
 }
 
@@ -124,7 +131,9 @@ impl PartialOrd for BongoLiteral {
 impl<D: AsRef<BongoDataType>> AsDiscBytes<&D> for BongoLiteral {
     fn as_disc_bytes(&self, def: &D) -> Result<Vec<u8>, BongoError> {
         if !def.as_ref().can_store(self) {
-            return Err(BongoError::InternalError("Datatype mismatch on conversion to bytes.".to_string()));
+            return Err(BongoError::InternalError(
+                "Datatype mismatch on conversion to bytes.".to_string(),
+            ));
         }
 
         match self {
@@ -134,15 +143,15 @@ impl<D: AsRef<BongoDataType>> AsDiscBytes<&D> for BongoLiteral {
 
                 Ok(bytes)
             }
-            BongoLiteral::Bool(val) => {
-                Ok(vec![true as u8, *val as u8])
-            }
+            BongoLiteral::Bool(val) => Ok(vec![true as u8, *val as u8]),
             BongoLiteral::Null => {
                 let size = def.as_ref().disc_size();
 
                 let mut bytes = Vec::with_capacity(size);
                 bytes.push(false as u8); // indicator for NULL value
-                unsafe { bytes.set_len(size); } // safe because size is pre-allocated
+                unsafe {
+                    bytes.set_len(size);
+                } // safe because size is pre-allocated
 
                 Ok(bytes)
             }
@@ -154,7 +163,9 @@ impl<D: AsRef<BongoDataType>> AsDiscBytes<&D> for BongoLiteral {
                 bytes.append(&mut val.as_bytes().to_vec());
                 bytes.push(0xFFu8);
 
-                unsafe { bytes.set_len(disc_size); } // safe because size is pre-allocated
+                unsafe {
+                    bytes.set_len(disc_size);
+                } // safe because size is pre-allocated
 
                 Ok(bytes)
             }
@@ -165,7 +176,9 @@ impl<D: AsRef<BongoDataType>> AsDiscBytes<&D> for BongoLiteral {
 impl<D: AsRef<BongoDataType>> FromDiscBytes<D> for BongoLiteral {
     fn from_disc_bytes(bytes: &[u8], def: D) -> Result<Self, BongoError> {
         if bytes.len() != def.as_ref().disc_size() {
-            return Err(BongoError::InternalError("Cannot read literal from bytes due to wrong size of byte array.".to_string()));
+            return Err(BongoError::InternalError(
+                "Cannot read literal from bytes due to wrong size of byte array.".to_string(),
+            ));
         }
 
         if bytes[0] == 0 {
@@ -177,21 +190,85 @@ impl<D: AsRef<BongoDataType>> FromDiscBytes<D> for BongoLiteral {
         return match def.as_ref() {
             BongoDataType::Int => {
                 // safe because we know the size of the slice because of checks before
-                Ok(BongoLiteral::Int(i64::from_be_bytes(payload.try_into().unwrap())))
+                Ok(BongoLiteral::Int(i64::from_be_bytes(
+                    payload.try_into().unwrap(),
+                )))
             }
-            BongoDataType::Bool => { Ok(BongoLiteral::Bool(payload[0] != 0)) } // convert to bool
-            BongoDataType::Varchar(_) => {
-                match payload.iter().position(|b| { b == &0xFFu8 }) {
-                    None => { Err(BongoError::InternalError("Cannot read literal from bytes due to corrupted format.".to_string())) }
-                    Some(delim) => {
-                        match String::from_utf8(payload.to_vec().into_iter().take(delim).collect()) {
-                            Ok(content) => { Ok(BongoLiteral::Varchar(content)) }
-                            Err(_) => { Err(BongoError::InternalError("Cannot read literal from bytes due to corrupted format.".to_string())) }
-                        }
+            BongoDataType::Bool => Ok(BongoLiteral::Bool(payload[0] != 0)), // convert to bool
+            BongoDataType::Varchar(_) => match payload.iter().position(|b| b == &0xFFu8) {
+                None => Err(BongoError::InternalError(
+                    "Cannot read literal from bytes due to corrupted format.".to_string(),
+                )),
+                Some(delim) => {
+                    match String::from_utf8(payload.to_vec().into_iter().take(delim).collect()) {
+                        Ok(content) => Ok(BongoLiteral::Varchar(content)),
+                        Err(_) => Err(BongoError::InternalError(
+                            "Cannot read literal from bytes due to corrupted format.".to_string(),
+                        )),
                     }
                 }
-            }
+            },
         };
+    }
+}
+
+impl FromBongoLiteral for i64 {
+    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+        if let BongoLiteral::Int(v) = literal {
+            v
+        } else {
+            panic!("Could not convert BongoLiteral to i64");
+        }
+    }
+}
+
+impl FromBongoLiteral for String {
+    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+        if let BongoLiteral::Varchar(v) = literal {
+            v
+        } else {
+            panic!("Could not convert BongoLiteral to String");
+        }
+    }
+}
+
+impl FromBongoLiteral for bool {
+    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+        if let BongoLiteral::Bool(v) = literal {
+            v
+        } else {
+            panic!("Could not convert BongoLiteral to bool");
+        }
+    }
+}
+
+impl FromBongoLiteral for Option<i64> {
+    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+        match literal {
+            BongoLiteral::Int(i) => Some(i),
+            BongoLiteral::Null => None,
+            _ => panic!("Could not convert BongoLiteral to i64"),
+        }
+    }
+}
+
+impl FromBongoLiteral for Option<bool> {
+    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+        match literal {
+            BongoLiteral::Bool(b) => Some(b),
+            BongoLiteral::Null => None,
+            _ => panic!("Could not convert BongoLiteral to i64"),
+        }
+    }
+}
+
+impl FromBongoLiteral for Option<String> {
+    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+        match literal {
+            BongoLiteral::Varchar(s) => Some(s),
+            BongoLiteral::Null => None,
+            _ => panic!("Could not convert BongoLiteral to i64"),
+        }
     }
 }
 
@@ -215,24 +292,26 @@ impl AsRef<BongoDataType> for BongoDataType {
 impl BongoDataType {
     pub fn can_store(&self, lit: &BongoLiteral) -> bool {
         return match lit {
-            BongoLiteral::Int(_) => { matches!(self, BongoDataType::Int) }
-            BongoLiteral::Bool(_) => { matches!(self, BongoDataType::Bool) }
-            BongoLiteral::Varchar(s) => {
-                match self {
-                    BongoDataType::Varchar(cap) => { &s.len() <= cap }
-                    _ => false
-                }
+            BongoLiteral::Int(_) => {
+                matches!(self, BongoDataType::Int)
             }
-            BongoLiteral::Null => true
+            BongoLiteral::Bool(_) => {
+                matches!(self, BongoDataType::Bool)
+            }
+            BongoLiteral::Varchar(s) => match self {
+                BongoDataType::Varchar(cap) => &s.len() <= cap,
+                _ => false,
+            },
+            BongoLiteral::Null => true,
         };
     }
 
     pub fn disc_size(&self) -> usize {
         // items are saved with one extra byte. The first byte is the information whether it is a null value
         match self {
-            BongoDataType::Int => { 8 + 1 }
-            BongoDataType::Bool => { 1 + 1 }
-            BongoDataType::Varchar(size) => { size + 1 + 1 } // one 0xFF at the end as terminator
+            BongoDataType::Int => 8 + 1,
+            BongoDataType::Bool => 1 + 1,
+            BongoDataType::Varchar(size) => size + 1 + 1, // one 0xFF at the end as terminator
         }
     }
 }
@@ -281,17 +360,19 @@ pub struct ColumnDef {
     pub data_type: BongoDataType,
 }
 
-impl<'a, T: AsRef<[ColumnDef]>> GetColNamesExt<'a> for T {
-    fn get_col_names(&'a self) -> Vec<&'a str> {
-        self.as_ref().iter()
-            .map(|col_def| -> &str { col_def.name.as_str() })
+impl<T: AsRef<[ColumnDef]>> GetColNamesExt for T {
+    fn get_col_names(&self) -> Vec<String> {
+        self.as_ref()
+            .iter()
+            .map(|col_def| -> String { col_def.name.clone() })
             .collect()
     }
 }
 
 impl<'a, T: AsRef<[ColumnDef]>> GetDTypesExt<'a> for T {
     fn get_d_types(&'a self) -> Vec<&'a BongoDataType> {
-        self.as_ref().iter()
+        self.as_ref()
+            .iter()
             .map(|col_def| -> &BongoDataType { &col_def.data_type })
             .collect()
     }
@@ -334,13 +415,12 @@ impl<D: AsRef<BongoDataType>> AsDiscBytes<&[D]> for Row {
             return Err(InternalError("Row to big for definition and therefore cannot be converted to byte representation.".to_string()));
         }
 
-        Ok(self.iter()
+        Ok(self
+            .iter()
             .enumerate()
-            .map(|(i, lit)| {
-                lit.as_disc_bytes(&def[i])
-            })
+            .map(|(i, lit)| lit.as_disc_bytes(&def[i]))
             .collect::<Vec<Result<Vec<u8>, BongoError>>>()
-            .try_convert_all(|item| { item })?
+            .try_convert_all(|item| item)?
             .concat())
     }
 }
@@ -349,16 +429,16 @@ impl<D: AsRef<BongoDataType>> FromDiscBytes<&[D]> for Row {
     fn from_disc_bytes(bytes: &[u8], def: &[D]) -> Result<Self, BongoError> {
         let mut offset = 0;
         def.iter()
-            .map(|d_type| {
-                match bytes.read_bytes(&mut offset, d_type.as_ref().disc_size() as u64) {
-                    Ok(bytes) => {
-                        BongoLiteral::from_disc_bytes(&bytes, &d_type)
-                    }
-                    Err(_) => { Err(BongoError::InternalError("Reading row from bytes not successful.".to_string())) }
-                }
-            })
+            .map(
+                |d_type| match bytes.read_bytes(&mut offset, d_type.as_ref().disc_size() as u64) {
+                    Ok(bytes) => BongoLiteral::from_disc_bytes(&bytes, &d_type),
+                    Err(_) => Err(BongoError::InternalError(
+                        "Reading row from bytes not successful.".to_string(),
+                    )),
+                },
+            )
             .collect::<Vec<Result<BongoLiteral, BongoError>>>()
-            .try_convert_all(|x| { x }) // bubble up error
+            .try_convert_all(|x| x) // bubble up error
     }
 }
 
@@ -383,20 +463,54 @@ mod tests {
         assert!(BongoDataType::Varchar(5).can_store(&BongoLiteral::Null));
         assert!(!BongoDataType::Varchar(5).can_store(&BongoLiteral::Int(5)));
         assert!(!BongoDataType::Varchar(5).can_store(&BongoLiteral::Bool(true)));
-        assert!(!BongoDataType::Varchar(5).can_store(&BongoLiteral::Varchar("More than size 5".to_string())));
+        assert!(!BongoDataType::Varchar(5)
+            .can_store(&BongoLiteral::Varchar("More than size 5".to_string())));
     }
 
     #[test]
     fn bongo_lit_as_and_from_disc_bytes_null() {
         // note: the content of null values is ignored except the first byte
-        assert_eq!(BongoLiteral::Null.as_disc_bytes(&BongoDataType::Int).unwrap()[0], 0);
-        assert_eq!(BongoLiteral::Null.as_disc_bytes(&BongoDataType::Int).unwrap().len(), 9);
+        assert_eq!(
+            BongoLiteral::Null
+                .as_disc_bytes(&BongoDataType::Int)
+                .unwrap()[0],
+            0
+        );
+        assert_eq!(
+            BongoLiteral::Null
+                .as_disc_bytes(&BongoDataType::Int)
+                .unwrap()
+                .len(),
+            9
+        );
 
-        assert_eq!(BongoLiteral::Null.as_disc_bytes(&BongoDataType::Bool).unwrap()[0], 0);
-        assert_eq!(BongoLiteral::Null.as_disc_bytes(&BongoDataType::Bool).unwrap().len(), 2);
+        assert_eq!(
+            BongoLiteral::Null
+                .as_disc_bytes(&BongoDataType::Bool)
+                .unwrap()[0],
+            0
+        );
+        assert_eq!(
+            BongoLiteral::Null
+                .as_disc_bytes(&BongoDataType::Bool)
+                .unwrap()
+                .len(),
+            2
+        );
 
-        assert_eq!(BongoLiteral::Null.as_disc_bytes(&BongoDataType::Varchar(10)).unwrap()[0], 0);
-        assert_eq!(BongoLiteral::Null.as_disc_bytes(&BongoDataType::Varchar(10)).unwrap().len(), 12);
+        assert_eq!(
+            BongoLiteral::Null
+                .as_disc_bytes(&BongoDataType::Varchar(10))
+                .unwrap()[0],
+            0
+        );
+        assert_eq!(
+            BongoLiteral::Null
+                .as_disc_bytes(&BongoDataType::Varchar(10))
+                .unwrap()
+                .len(),
+            12
+        );
 
         let original = BongoLiteral::Null;
         let bytes = original.as_disc_bytes(&BongoDataType::Varchar(32)).unwrap();
@@ -406,10 +520,25 @@ mod tests {
 
     #[test]
     fn bongo_lit_as_and_from_disc_bytes_int() {
-        assert_eq!(BongoLiteral::Int(42).as_disc_bytes(&BongoDataType::Int).unwrap()[0], 1);
-        assert_eq!(BongoLiteral::Int(42).as_disc_bytes(&BongoDataType::Int).unwrap().len(), 9);
-        assert!(BongoLiteral::Int(42).as_disc_bytes(&BongoDataType::Bool).is_err());
-        assert!(BongoLiteral::Int(42).as_disc_bytes(&BongoDataType::Varchar(10)).is_err());
+        assert_eq!(
+            BongoLiteral::Int(42)
+                .as_disc_bytes(&BongoDataType::Int)
+                .unwrap()[0],
+            1
+        );
+        assert_eq!(
+            BongoLiteral::Int(42)
+                .as_disc_bytes(&BongoDataType::Int)
+                .unwrap()
+                .len(),
+            9
+        );
+        assert!(BongoLiteral::Int(42)
+            .as_disc_bytes(&BongoDataType::Bool)
+            .is_err());
+        assert!(BongoLiteral::Int(42)
+            .as_disc_bytes(&BongoDataType::Varchar(10))
+            .is_err());
 
         let original = BongoLiteral::Int(42);
         let bytes = original.as_disc_bytes(&BongoDataType::Int).unwrap();
@@ -420,10 +549,25 @@ mod tests {
 
     #[test]
     fn bongo_lit_as_and_from_disc_bytes_bool() {
-        assert_eq!(BongoLiteral::Bool(true).as_disc_bytes(&BongoDataType::Bool).unwrap()[0], 1);
-        assert_eq!(BongoLiteral::Bool(true).as_disc_bytes(&BongoDataType::Bool).unwrap().len(), 2);
-        assert!(BongoLiteral::Bool(true).as_disc_bytes(&BongoDataType::Int).is_err());
-        assert!(BongoLiteral::Bool(true).as_disc_bytes(&BongoDataType::Varchar(10)).is_err());
+        assert_eq!(
+            BongoLiteral::Bool(true)
+                .as_disc_bytes(&BongoDataType::Bool)
+                .unwrap()[0],
+            1
+        );
+        assert_eq!(
+            BongoLiteral::Bool(true)
+                .as_disc_bytes(&BongoDataType::Bool)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(BongoLiteral::Bool(true)
+            .as_disc_bytes(&BongoDataType::Int)
+            .is_err());
+        assert!(BongoLiteral::Bool(true)
+            .as_disc_bytes(&BongoDataType::Varchar(10))
+            .is_err());
 
         let original = BongoLiteral::Bool(false);
         let bytes = original.as_disc_bytes(&BongoDataType::Bool).unwrap();
@@ -436,24 +580,52 @@ mod tests {
     fn bongo_lit_as_and_from_disc_bytes_varchar() {
         let m = "rust".to_string();
         let size = m.len();
-        assert_eq!(BongoLiteral::Varchar(m.clone()).as_disc_bytes(&BongoDataType::Varchar(size)).unwrap()[0], 1);
-        assert_eq!(BongoLiteral::Varchar(m.clone()).as_disc_bytes(&BongoDataType::Varchar(size)).unwrap().len(), size + 2);
-        assert_eq!(BongoLiteral::Varchar(m.clone()).as_disc_bytes(&BongoDataType::Varchar(200)).unwrap().len(), 200 + 2);
-        assert!(BongoLiteral::Varchar(m.clone()).as_disc_bytes(&BongoDataType::Varchar(2)).is_err());
-        assert!(BongoLiteral::Varchar(m.clone()).as_disc_bytes(&BongoDataType::Bool).is_err());
-        assert!(BongoLiteral::Varchar(m.clone()).as_disc_bytes(&BongoDataType::Int).is_err());
+        assert_eq!(
+            BongoLiteral::Varchar(m.clone())
+                .as_disc_bytes(&BongoDataType::Varchar(size))
+                .unwrap()[0],
+            1
+        );
+        assert_eq!(
+            BongoLiteral::Varchar(m.clone())
+                .as_disc_bytes(&BongoDataType::Varchar(size))
+                .unwrap()
+                .len(),
+            size + 2
+        );
+        assert_eq!(
+            BongoLiteral::Varchar(m.clone())
+                .as_disc_bytes(&BongoDataType::Varchar(200))
+                .unwrap()
+                .len(),
+            200 + 2
+        );
+        assert!(BongoLiteral::Varchar(m.clone())
+            .as_disc_bytes(&BongoDataType::Varchar(2))
+            .is_err());
+        assert!(BongoLiteral::Varchar(m.clone())
+            .as_disc_bytes(&BongoDataType::Bool)
+            .is_err());
+        assert!(BongoLiteral::Varchar(m.clone())
+            .as_disc_bytes(&BongoDataType::Int)
+            .is_err());
 
         // varchar with exact size
         let original = BongoLiteral::Varchar(m.clone());
-        let bytes = original.as_disc_bytes(&BongoDataType::Varchar(size)).unwrap();
+        let bytes = original
+            .as_disc_bytes(&BongoDataType::Varchar(size))
+            .unwrap();
         let literal = BongoLiteral::from_disc_bytes(&bytes, &BongoDataType::Varchar(size)).unwrap();
         assert_eq!(original, literal);
 
         // varchar in bigger container
         let container_size = size + 10;
         let original = BongoLiteral::Varchar(m.clone());
-        let bytes = original.as_disc_bytes(&BongoDataType::Varchar(container_size)).unwrap();
-        let literal = BongoLiteral::from_disc_bytes(&bytes, &BongoDataType::Varchar(container_size)).unwrap();
+        let bytes = original
+            .as_disc_bytes(&BongoDataType::Varchar(container_size))
+            .unwrap();
+        let literal =
+            BongoLiteral::from_disc_bytes(&bytes, &BongoDataType::Varchar(container_size)).unwrap();
         assert_eq!(original, literal);
     }
 }

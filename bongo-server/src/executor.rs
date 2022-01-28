@@ -5,7 +5,7 @@ use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{RwLock, RwLockReadGuard};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use bongo_core::bongo_request::BongoRequest;
 use bongo_core::bongo_result::BongoResult;
@@ -32,11 +32,13 @@ struct TableMetaData {
     ///
     /// `idx` is a tuple of `String` and `HashMap<BongoLiteral, Vec<u64>>`.
     /// The `idx.0` specifies the name of the indexed column.
-    /// the `idx.1` maps a BongoLiteral, which is the content of an entry for a column, to row indices
-    /// on disc. If the the Vec has length > 1 it means that there was a hash collision which requires a linear search.
+    /// the `idx.1` maps a BongoLiteral, which is the content of an entry for a column, to indices of
+    /// the start of rows on disc on disc. That means if we read exactly as many bytes as a row in
+    /// that table is long at one of those indices, we will get back exactly one row.
+    /// If the the Vec has length > 1 it means that there was a hash collision which requires a linear search.
     /// The Vec always has length >= 1 because the HashMap entry will be removed if it has length == 0.
     ///
-    // TODO: allow multiple indexes and set them with CREATE INDEX statement
+    // TODO: LOW_PRIO: allow multiple indexes and set them with CREATE INDEX statement
     pub idx: (String, HashMap<BongoLiteral, Vec<u64>>),
     ///
     /// `ghosts` is a list of row indices marked as unused. Unused rows result from DELETE operations.
@@ -89,7 +91,48 @@ pub struct Executor {
     ///
     /// `tables` maps table names to their meta data.
     ///
-    /// TODO: docs about concurrency strategy
+    /// We use a 2-level-RwLock-system allowing for the maximum possible degree of parallelism while
+    /// still keeping thread-safety.
+    ///
+    /// 1st level RwLock (outer lock):
+    /// - A read lock on this means that we have immutable access to the HashMap which means we
+    ///     cannot remove or add any tables. However, we still have mutable access to the tables themselves
+    ///     as those are wrapped inside a RefCell.
+    ///     The execution of the following statements requires acquiring a read lock on the first level:
+    ///         SELECT, INSERT, UPDATE, DELETE
+    /// - A write lock on this means that we have mutable access on the entire HashMap allowing us to
+    ///     add and remove tables. This also means we guarantee that no other statement is executed at
+    ///     this time.
+    ///     The execution of the following statements requires acquiring a write lock on the first level:
+    ///         CREATE TABLE, DROP TABLE, FLUSH
+    ///
+    /// 2nd level RwLock (inner lock):
+    /// - A read lock on this means that we have immutable access to the tables which means we cannot
+    ///     modify anything at all.
+    ///     The execution of the following statements requires acquiring a read lock on the second level:
+    ///         SELECT
+    /// - A write lock on this means that we have mutable access to exactly ONE table and that no other thread
+    ///     currently has access to this table in any way.
+    ///     The execution of the following statements requires acquiring a write lock on the second level:
+    ///         INSERT, UPDATE, DELETE
+    ///
+    /// Lets compare this to using a single RwLock system:
+    /// Single-level RwLock:
+    /// - Enables multiple parallel SELECTs OR
+    ///     - block any other statement except SELECT no matter the table
+    /// - exactly one  CREATE TABLE, DROP TABLE, FLUSH, INSERT, UPDATE, DELETE
+    ///     - block any other statement
+    ///
+    /// 2-level RwLock (used here):
+    /// - Enables multiple parallel SELECTs
+    ///     - blocks only INSERTs, UPDATEs, DELETEs on this specific and CREATE TABLE, DROP TABLE, FLUSH
+    /// - Enables multiple parallel INSERTs, UPDATEs, DELETEs as long as they are on different tables
+    ///     - blocks only any other statement on this specific table
+    /// - exclusive access required for CREATE TABLE, DROP TABLE, FLUSH
+    ///     - blocks any other statements
+    ///
+    /// So over all we get more parallelism while keeping thread safety, becasue we only lock what really
+    /// has to be locked.
     tables: RwLock<HashMap<String, RefCell<RwLock<TableMetaData>>>>,
     ///
     /// `auto_flush` == true means that a flush shall be triggered after every other command except flush itself.
@@ -97,8 +140,6 @@ pub struct Executor {
     auto_flush: bool,
 }
 
-// TODO: explain this more in detail. When does it lock and why is it better than wrapping whole Executor in mutex.
-//  Explain how this leads to usage of UnsafeSyncCell
 // Executor internally ensures by its logic and by using RwLock that it is safe to use from different threads.
 unsafe impl Send for Executor {}
 
@@ -245,15 +286,20 @@ impl Executor {
     ///  4. (re-)create meta data file
     ///  5. write table to file
     ///
-    fn flush(&self) -> BongoResult {
-        // this function does only require read access on the HashMap meaning it will not add or remove tables
+    fn flush(&mut self) -> BongoResult {
+        // this function requires write access on the whole hash map which means there can not be
+        // any other concurrent statement running. This is because this function will modify the disc
+        // directly which must be synchronized.
 
-        for table in self.get_tables()?.iter() {
+        let db_root = self.db_root.clone(); // access here before mut ref access to self is required
+
+        for table in self.tables_write_access()?.iter() {
             let encoded = bincode::serialize(&table);
             if encoded.is_err() { return Err(BongoError::InternalError("Could not write cashed state to disc.".to_string())); }
             let encoded = encoded.unwrap();
 
-            let mut location = self.get_table_dir_on_disc(table.0);
+            let mut location = db_root.clone();
+            location.push(table.0);
 
             if !location.is_dir() {
                 return Err(BongoError::InternalError("Table to flush has no directory on disc".to_string()));
@@ -298,7 +344,7 @@ impl Executor {
     ///
     fn select(&self, select: Select) -> BongoResult {
         let mut path = self.get_table_dir_if_exists(&select.table)?;
-        let tables = self.get_tables()?;
+        let tables = self.tables_read_access()?;
         // unwrap safe, because we have checked the entry exists before
         let cell = tables.get(&select.table).unwrap();
         let table_lock = cell.borrow();
@@ -352,7 +398,6 @@ impl Executor {
         };
 
         for i in indexer.indices {
-            // TODO: why do we not use SeekFrom::Start(i * table.row_size as u64) ?
             if file.seek(SeekFrom::Start(i)).is_err() {
                 return Err(ReadFileError("Could not jump to correct position in file".to_string()));
             }
@@ -426,21 +471,19 @@ impl Executor {
 
         location.push("data.bongo");
 
-        let tables = self.get_tables()?;
+        let tables = self.tables_read_access()?;
         let cell = tables.get(&insert.table).unwrap();
-        let mut table_lock = cell.borrow_mut();
-        let table = table_lock.get_mut();
+        let table_lock = cell.borrow_mut();
+        let table = table_lock.write();
 
         if table.is_err() {
             return Err(InternalError("Concurrency Error.".to_string()));
         }
-        let table = table.unwrap();
+        let mut table = table.unwrap();
 
         // check if all columns are correct
         if table.cols.get_col_names() !=
-            insert.cols
-                .iter()
-                .collect::<Vec<&String>>() {
+            insert.cols {
             let col_names = table.cols
                 .iter()
                 .map(|col_def| { format!("{:?}", col_def) })
@@ -533,16 +576,16 @@ impl Executor {
     ///
     fn update(&mut self, update: Update) -> BongoResult {
         let mut path = self.get_table_dir_if_exists(&update.table)?;
-        let tables = self.get_tables()?;
+        let tables = self.tables_read_access()?;
         // unwrap safe, because we have checked the entry exists before
         let cell = tables.get(&update.table).unwrap();
-        let mut table_lock = cell.borrow_mut();
-        let table = table_lock.get_mut();
+        let table_lock = cell.borrow_mut();
+        let table = table_lock.write();
 
         if table.is_err() {
             return Err(BongoError::InternalError("Could not acquire read access to cached meta data.".to_string()));
         }
-        let table = table.unwrap();
+        let mut table = table.unwrap();
 
         // error if there is at least one column that does not exists
         if update.assignments.get_col_names().iter().any(|name| {
@@ -571,8 +614,6 @@ impl Executor {
         unsafe { row_buffer.set_len(table.row_size) } // expand buffer to avoid useless initialization
 
         for i in indexer.indices {
-
-            // TODO: why do we not use SeekFrom::Start(i * table.row_size as u64) ?
             if file.seek(SeekFrom::Start(i)).is_err() {
                 return Err(ReadFileError("Could not jump to correct position in file".to_string()));
             }
@@ -580,7 +621,7 @@ impl Executor {
                 return Err(BongoError::ReadFileError("Could not read row from disc".to_string()));
             }
             let row = Row::from_disc_bytes(&row_buffer, &table.cols.get_d_types())?;
-            // TODO: look for index dynamically in the future, as for now the first column is the indexed column
+            // TODO: LOW_PRIO: look for index dynamically in the future, as for now the first column is the indexed column
             let old_idx_val = row[0].clone();
 
             // if no condition exists or the existing condition evaluates to true this row shall be returned
@@ -598,7 +639,7 @@ impl Executor {
                 }
 
                 // update index
-                if update.assignments.get_col_names().contains(&table.idx.0.as_str()) {
+                if update.assignments.get_col_names().contains(&table.idx.0) {
                     // remove old row index
                     let indices = table.idx.1.get_mut(&old_idx_val);
                     if indices.is_none() {
@@ -649,15 +690,15 @@ impl Executor {
         let mut data_loc = table_dir.clone();
         data_loc.push("data.bongo");
 
-        let tables = self.get_tables()?;
+        let tables = self.tables_read_access()?;
         let cell = tables.get(&delete.table).unwrap();
-        let mut table_lock = cell.borrow_mut();
-        let table = table_lock.get_mut();
+        let table_lock = cell.borrow_mut();
+        let table = table_lock.write();
 
         if table.is_err() {
             return Err(InternalError("Concurrency Error.".to_string()));
         }
-        let table = table.unwrap();
+        let mut table = table.unwrap();
 
         let indexer = DiscIndexer::from_opt_expr(&table.idx, delete.condition);
 
@@ -683,7 +724,6 @@ impl Executor {
 
                 // additional for loop to fail early. Slower but safer
                 for i in indexer.indices {
-                    // TODO: why do we not use SeekFrom::Start(i * table.row_size as u64) ?
                     if file.seek(SeekFrom::Start(i)).is_err() {
                         return Err(BongoError::ReadFileError("Could not jump to correct position in file.".to_string()));
                     }
@@ -732,7 +772,7 @@ impl Executor {
     fn create_table(&mut self, create_table: CreateTable) -> BongoResult {
         let mut location = self.get_table_dir_on_disc(&create_table.table);
 
-        let tables = self.get_tables_mut()?;
+        let mut tables = self.tables_write_access()?;
         if tables.contains_key(&create_table.table) {
             return Err(BongoError::SqlRuntimeError(format!("Table '{}' already exists", &create_table.table)));
         }
@@ -784,7 +824,7 @@ impl Executor {
             paths_to_delete.insert(table_name, path);
         }
 
-        let tables = self.get_tables_mut()?;
+        let mut tables = self.tables_write_access()?;
 
         for (name, path) in paths_to_delete {
             if fs::remove_dir_all(&path).is_err() {
@@ -809,7 +849,7 @@ impl Executor {
     }
 
     fn table_exists_in_cache(&self, table_name: &str) -> Result<bool, BongoError> {
-        let tables = self.get_tables()?;
+        let tables = self.tables_read_access()?;
         Ok(tables.get(table_name).is_some())
     }
 
@@ -842,7 +882,7 @@ impl Executor {
         Ok(path)
     }
 
-    fn get_tables(&self) -> Result<RwLockReadGuard<HashMap<String, RefCell<RwLock<TableMetaData>>>>, BongoError> {
+    fn tables_read_access(&self) -> Result<RwLockReadGuard<HashMap<String, RefCell<RwLock<TableMetaData>>>>, BongoError> {
         let tables = self.tables.read();
         if tables.is_err() {
             return Err(BongoError::InternalError("Concurrency Error.".to_string()));
@@ -850,8 +890,8 @@ impl Executor {
         Ok(tables.unwrap())
     }
 
-    fn get_tables_mut(&mut self) -> Result<&mut HashMap<String, RefCell<RwLock<TableMetaData>>>, BongoError> {
-        let tables = self.tables.get_mut();
+    fn tables_write_access(&mut self) -> Result<RwLockWriteGuard<HashMap<String, RefCell<RwLock<TableMetaData>>>>, BongoError> {
+        let tables = self.tables.write();
         if tables.is_err() {
             return Err(BongoError::InternalError("Concurrency Error.".to_string()));
         }
@@ -908,11 +948,12 @@ struct DiscIndexer {
 }
 
 impl DiscIndexer {
-    // TODO: docs
     ///
     /// Returns all rows indices that are applicable after potentially having applied the index and
     /// the expression left to apply to all those indices. In case the index could already be used the
-    /// expression is None, and no linear search is needed anymore.
+    /// expression is None, and no linear search is needed anymore. In case the index could not be used
+    /// all indices are returned as a linear search is needed along with the expression which must be
+    /// checked for each of the indices.
     ///
     pub fn from_opt_expr(idx: &(String, HashMap<BongoLiteral, Vec<u64>>), opt_expr: Option<Expr>) -> Self {
         let (name, map) = idx;
@@ -1043,7 +1084,7 @@ impl TryFrom<(&str, &Expr)> for TrivialIdxExpr {
     }
 }
 
-// TODO: write concurrency tests with by using many threads that access the same executor
+// TODO: LOW_PRIO: write concurrency tests with by using many threads that access the same executor
 #[cfg(test)]
 mod tests {
     use bongo_core::bongo_request::BongoRequest;
@@ -1111,16 +1152,12 @@ mod tests {
     }
 
     mod create_drop_tables {
-        use std::collections::HashMap;
         use std::fs;
         use std::path::PathBuf;
         use std::str::FromStr;
 
         use bongo_core::bongo_request::BongoRequest;
-        use bongo_core::types::{BongoDataType, ColumnDef};
-
         use crate::executor::Executor;
-        use crate::executor::TableMetaData;
         use crate::executor::tests::create_example_table;
 
         ///
@@ -1144,35 +1181,13 @@ mod tests {
             {
                 let mut ex = Executor::new(&db_root, false, false).unwrap();
 
-                let expected_meta_data = TableMetaData {
-                    cols: vec![
-                        ColumnDef {
-                            name: "col_1".to_string(),
-                            data_type: BongoDataType::Int,
-                        },
-                        ColumnDef {
-                            name: "col_2".to_string(),
-                            data_type: BongoDataType::Varchar(256),
-                        },
-                        ColumnDef {
-                            name: "col_3".to_string(),
-                            data_type: BongoDataType::Bool,
-                        },
-                    ],
-                    // first column is the indexed column in BongoDB
-                    // index is not configurable so far
-                    // TODO: change this if CREATE INDEX is implemented in the future
-                    idx: ("col_1".to_string(), HashMap::new()),
-                    ghosts: vec![],
-                    row_size: (8 + 1) + (256 + 2) + (1 + 1), // all individual sizes of the datatypes
-                    row_count: 0,
-                };
-
-                match ex.tables.get_mut().unwrap().get_mut("table_1") {
+                match ex.tables.read().unwrap().get("table_1") {
                     None => { panic!("The entry table_1 does not exist in the meta data table") }
-                    Some(data) => {
-                        // note that a lock is acquired here and immediately afterwards dropped when leaving the scope
-                        assert_eq!(data.get_mut().get_mut().unwrap(), &expected_meta_data);
+                    Some(_data) => {
+                        // nice, some data is in there
+                        // unfortunately it is a bit hard checking the data is correct as it is behind a RwLock.
+                        // But we have loads of other tests that check the data is loaded correctly using the
+                        // public select interface of the Executor
                     }
                 }
 
@@ -1181,7 +1196,7 @@ mod tests {
                 ex.execute(&drop_table_req).unwrap();
 
                 // table has been removed from cache
-                let tables = ex.get_tables().unwrap();
+                let tables = ex.tables_read_access().unwrap();
                 assert!(tables.is_empty());
 
                 // table has been removed from disk
@@ -1254,7 +1269,7 @@ mod tests {
         use std::path::PathBuf;
 
         use bongo_core::bongo_request::BongoRequest;
-        use bongo_core::types::Row;
+        use bongo_core::types::{BongoLiteral, Row};
 
         use crate::executor::Executor;
         use crate::executor::tests::{create_example_table, get_example_rows, insert_example_rows};
@@ -1428,6 +1443,9 @@ mod tests {
             assert_eq!(expected, result);
         }
 
+        ///
+        /// Tests how the system responds if the where condition is indexable
+        ///
         #[test]
         fn eq_indexable_where() {
             let db_root = PathBuf::from("test_temp/eq_indexable_where");
@@ -1439,6 +1457,42 @@ mod tests {
             let request = BongoRequest { sql: sql.to_string() };
             // should return only 3rd row
             let expected: Vec<Row> = vec![get_example_rows().remove(2)];
+            let result;
+
+            {
+                let mut ex = Executor::new(&db_root, true, false).unwrap();
+                create_example_table(&mut ex, table_name);
+                insert_example_rows(&mut ex, table_name);
+            } // leaving scope triggers drop and flush on the executor
+
+            {
+                let mut ex = Executor::new(&db_root, false, false).unwrap();
+                result = ex.execute(&request).unwrap().unwrap();
+            } // drop executors before cleanup to avoid executor flushing on non existing dir.
+
+            // clean up before assertion in case it panics
+            fs::remove_dir_all(&db_root).unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn comparison_with_null() {
+            let db_root = PathBuf::from("test_temp/comparison_with_null");
+            let table_name = "table_1";
+
+            let sql = format!("SELECT * \
+                                     FROM {table_name} \
+                                     WHERE col_3 = Null");
+            let request = BongoRequest { sql: sql.to_string() };
+            // should return only 3rd row
+            let expected: Vec<Row> = get_example_rows().into_iter()
+                .filter(|r| {
+                    match r[2] {
+                        BongoLiteral::Null => true,
+                        _ => false
+                    }
+                }).collect();
             let result;
 
             {

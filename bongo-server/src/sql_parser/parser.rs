@@ -100,9 +100,7 @@ impl SqlParser {
                     .try_convert_all(BongoSelectItem::try_from)?,
                 table: Self::select_extract_table(&select.from)?,
                 order: Self::select_extract_order(query.order_by)?,
-                condition: select
-                    .selection
-                    .try_convert_option(BongoExpr::try_from)?,
+                condition: select.selection.try_convert_option(BongoExpr::try_from)?,
             })),
             _ => unsupported_feature_err("This query syntax is not supported."),
         }
@@ -208,8 +206,7 @@ impl SqlParser {
                 assignments,
             } => Ok(Statement::Update(Update {
                 table: Self::table_name_from_table_with_joins(&table)?,
-                assignments: assignments
-                    .try_convert_all(BongoAssignment::try_from)?,
+                assignments: assignments.try_convert_all(BongoAssignment::try_from)?,
                 condition: selection.try_convert_option(BongoExpr::try_from)?,
             })),
             _ => {
@@ -310,14 +307,12 @@ impl SqlParser {
 #[cfg(test)]
 mod tests {
     mod select {
-        use bongo_core::types::BongoLiteral;
-
         use crate::sql_parser::parser::SqlParser;
         use crate::statement::{
             BinOp as BongoBinOp, Expr as BongoExpr, Order, Select, SelectItem, Statement,
         };
+        use bongo_core::types::BongoLiteral;
 
-        // TODO: do not allow wildcard and columns together -> select_items.size shall be == 1 if a wildcard exists
         #[test]
         fn all_features_together() {
             let sql = "SELECT *, col_1, col_2 \
@@ -427,11 +422,9 @@ mod tests {
     }
 
     mod insert {
-        use bongo_core::types::BongoLiteral;
-
-        use crate::statement::{Insert, Statement};
-
         use super::super::SqlParser;
+        use crate::statement::{Insert, Statement};
+        use bongo_core::types::BongoLiteral;
 
         #[test]
         fn multiple_rows() {
@@ -473,11 +466,9 @@ mod tests {
     }
 
     mod update {
-        use bongo_core::types::BongoLiteral;
-
-        use crate::statement::{Assignment, Statement, Update};
-
         use super::super::SqlParser;
+        use crate::statement::{Assignment, Statement, Update};
+        use bongo_core::types::BongoLiteral;
 
         #[test]
         fn multiple_set_expr() {
@@ -507,11 +498,9 @@ mod tests {
     }
 
     mod delete {
-        use bongo_core::types::BongoLiteral;
-
-        use crate::statement::{BinOp as BongoBinOp, Delete, Expr as BongoExpr, Statement};
-
         use super::super::SqlParser;
+        use crate::statement::{BinOp as BongoBinOp, Delete, Expr as BongoExpr, Statement};
+        use bongo_core::types::BongoLiteral;
 
         #[test]
         fn nested_condition() {
@@ -698,9 +687,8 @@ mod tests {
     }
 
     mod diverse {
-        use bongo_core::types::BongoError::EmptySqlStatementError;
-
         use crate::sql_parser::parser::SqlParser;
+        use bongo_core::types::BongoError::EmptySqlStatementError;
 
         #[test]
         fn empty_statement() {

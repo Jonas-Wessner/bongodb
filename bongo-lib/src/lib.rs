@@ -1,8 +1,6 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
+pub mod connection;
+pub mod traits;
+pub mod types;
+
+#[cfg(feature = "derive")]
+pub mod derives;

@@ -6,14 +6,24 @@ use sqlparser::ast::{
 use std::convert::TryFrom;
 use std::mem;
 
-// TODO: docs
+///
+/// ApplyAssignments is an extension trait that is implemented by the Row type.
+/// It was not possible to define this as a method directly because the Row type is a typedef which
+/// we can only add methods to by using a custom trait.
+///
 pub trait ApplyAssignments {
-    fn apply_assignments(self, assignments: &[Assignment], cols: &[&str])
+    ///
+    /// Applies the `assignments` to itself given the definition in `cols`.
+    ///
+    /// `assignments` defines assignments to identifiers. The location of the identifiers inside of the
+    /// row itself i.e. their index is defined through the vector of column names `cols`.
+    ///
+    fn apply_assignments(self, assignments: &[Assignment], cols: &[String])
                          -> Result<Self, BongoError> where Self: Sized;
 }
 
 impl ApplyAssignments for Row {
-    fn apply_assignments(mut self, assignments: &[Assignment], cols: &[&str]) -> Result<Self, BongoError> {
+    fn apply_assignments(mut self, assignments: &[Assignment], cols: &[String]) -> Result<Self, BongoError> {
         if self.len() != cols.len() {
             return Err(BongoError::InternalError("Cannot assign to row because column definition has a different size than row.".to_string()));
         }
@@ -48,17 +58,17 @@ pub struct Assignment {
 /// NOTE: unfortunately, this trait must be defined in types and in server, because only traits in the same
 /// crate can be implemented for arbitrary types (in this case for slices)
 ///
-pub trait GetColNamesExt<'a> {
+pub trait GetColNamesExt {
     ///
     /// Returns the names of all contained columns.
     ///
-    fn get_col_names(&'a self) -> Vec<&'a str>;
+    fn get_col_names(&self) -> Vec<String>;
 }
 
-impl<'a, T: AsRef<[Assignment]>> GetColNamesExt<'a> for T {
-    fn get_col_names(&'a self) -> Vec<&'a str> {
+impl<T: AsRef<[Assignment]>> GetColNamesExt for T {
+    fn get_col_names(&self) -> Vec<String> {
         self.as_ref().iter()
-            .map(|a| -> &str { a.col_name.as_str() })
+            .map(|a| -> String { a.col_name.clone() })
             .collect()
     }
 }
@@ -190,17 +200,33 @@ pub enum BinOp {
 }
 
 impl BinOp {
-    // TODO: docs
+    ///
+    /// Applies the `BinOp` to two `BongoLiteral`s.
+    ///
+    /// All literals != `BongoLiteral::Null` will be compared using the comparison operators of their
+    /// contained values.
+    /// `BongoLiteral::Null` values in logical expressions evaluate to false.
+    ///
+    /// Comparing literals of different variants (both of them not null) will result in an error as
+    /// they are not comparable.
+    ///
     pub fn apply(&self, left: &BongoLiteral, right: &BongoLiteral) -> Result<BongoLiteral, BongoError> {
         // only equal discriminants can be compared.
-        // The exception is Null, which can always be compared as if it was false
+        // The exception is Null
+        // 1. Null can be compared in with Eq and NotEq operator to other values
+        // 2. Null is treated as Bool(false) in with all other operators
+
+        // handle the special case of NotEq or Eq comparison with Null values first
+        if let Some(lit) = self.equality_comparison_with_null(left, right) {
+            return Ok(lit);
+        }
+
         let null = mem::discriminant(&BongoLiteral::Null);
 
         // create let binding to potentially override to BongoLiteral::Bool(false) if null
         let mut left = left;
         let mut right = right;
 
-        // Null values in Logical operations shall evaluate to false
         if mem::discriminant(left) == null {
             left = &BongoLiteral::Bool(false);
         }
@@ -238,6 +264,31 @@ impl BinOp {
         return Err(BongoError::SqlRuntimeError(
             format!("Cannot compare '{:?}' and '{:?}'. Can only compare instances of the same datatype.",
                     left, right)));
+    }
+
+    fn equality_comparison_with_null(&self, left: &BongoLiteral, right: &BongoLiteral) -> Option<BongoLiteral> {
+        let left_disc = mem::discriminant(left);
+        let right_disc = mem::discriminant(right);
+        let null_disc = mem::discriminant(&BongoLiteral::Null);
+        match self {
+            BinOp::Eq => {
+                // if one of them is null both must be null
+                if left_disc == null_disc || right_disc == null_disc {
+                    return Some(BongoLiteral::Bool(left_disc == right_disc));
+                }
+                // if none of them is null it is not a comparison of null values
+                None
+            }
+            BinOp::NotEq => {
+                // they must be different and one of them must be null
+                if left_disc == null_disc || right_disc == null_disc {
+                    return Some(BongoLiteral::Bool(left_disc != right_disc));
+                }
+                // if none of them is null it is not a comparison of null values
+                None
+            }
+            _ => None
+        }
     }
 }
 
@@ -293,18 +344,24 @@ pub enum Expr {
 }
 
 impl Expr {
-    // TODO: enhance docs
     ///
-    /// Evaluates the expression recursively for a specific row.
+    /// Evaluates the expression recursively for a specific `Row`.
     ///
-    pub fn eval(&self, row: &Row, cols: &[&str]) -> Result<bool, BongoError> {
+    /// Evaluating an expression requires a row to evaluate it as well as the knowledge of what
+    /// identifier i.e. column name is mapped to what index of the `row`.
+    ///
+    pub fn eval(&self, row: &Row, cols: &[String]) -> Result<bool, BongoError> {
+        // Expressions are evaluated from the leaves by evaluating them using the `BinOp::eval` method.
+        // As the final result is a boolean we have to use a helper function to convert the `BongoLiteral::Bool`
+        // to a `bool` in the end.
+
         if row.len() != cols.len() {
             return Err(BongoError::InternalError("Column size and row size are different".to_string()));
         }
 
         self.eval_helper(row, cols)?.as_bool()
     }
-    fn eval_helper(&self, row: &Row, cols: &[&str]) -> Result<BongoLiteral, BongoError> {
+    fn eval_helper(&self, row: &Row, cols: &[String]) -> Result<BongoLiteral, BongoError> {
         match self {
             Expr::BinaryExpr { left, op, right } => {
                 let left_val = left.eval_helper(row, cols)?;
@@ -450,7 +507,6 @@ pub struct DropDB {
     pub database: String,
 }
 
-// TODO: NULL values should be able to compared to anything, because we never know if a column might be null at some point
 #[cfg(test)]
 mod tests {
     mod bin_op {
@@ -501,6 +557,17 @@ mod tests {
             assert!(op.apply(&BongoLiteral::Int(1), &BongoLiteral::Int(1)).is_err());
             assert!(op.apply(&BongoLiteral::Varchar("a".to_string()), &BongoLiteral::Varchar("b".to_string())).is_err());
         }
+
+        #[test]
+        fn equality_for_null() {
+            let op = BinOp::Eq;
+            // comparing null to something else is false
+            assert_eq!(op.apply(&BongoLiteral::Null, &BongoLiteral::Int(42)).unwrap(), BongoLiteral::Bool(false));
+            assert_eq!(op.apply(&BongoLiteral::Null, &BongoLiteral::Varchar("something".to_string())).unwrap(), BongoLiteral::Bool(false));
+            assert_eq!(op.apply(&BongoLiteral::Null, &BongoLiteral::Bool(false)).unwrap(), BongoLiteral::Bool(false));
+            // comparing null to null is true
+            assert_eq!(op.apply(&BongoLiteral::Null, &BongoLiteral::Null).unwrap(), BongoLiteral::Bool(true));
+        }
     }
 
     mod expr {
@@ -514,11 +581,11 @@ mod tests {
             // literals for row and the definition of columns have different sizes
             assert!(Expr::Value(BongoLiteral::Bool(true)).eval(
                 &vec![BongoLiteral::Bool(true), BongoLiteral::Bool(false)],
-                &["col_1"]).is_err());
+                &["col_1".to_string()]).is_err());
             // identifier is not a column
             assert!(Expr::Identifier("col_1".to_string()).eval(
                 &vec![BongoLiteral::Bool(true)],
-                &["col_2"]).is_err());
+                &["col_2".to_string()]).is_err());
         }
 
         #[test]
@@ -528,11 +595,11 @@ mod tests {
             // with some columns given, but those are ignored, because expression does not contains identifier
             assert!(Expr::Value(BongoLiteral::Bool(true)).eval(
                 &vec![BongoLiteral::Bool(true), BongoLiteral::Bool(false)],
-                &["col_1", "col_2"]).unwrap());
+                &["col_1".to_string(), "col_2".to_string()]).unwrap());
             // identifier that evaluates to true
             assert!(Expr::Identifier("col_1".to_string()).eval(
                 &vec![BongoLiteral::Bool(true)],
-                &["col_1"]).unwrap());
+                &["col_1".to_string()]).unwrap());
         }
 
         #[test]
@@ -551,7 +618,7 @@ mod tests {
                 }),
             };
 
-            let cols = &["a", "b", "c", "d"];
+            let cols = &["a".to_string(), "b".to_string(), "c".to_string(), "d".to_string()];
 
             let row_true_1 = &vec![
                 BongoLiteral::Varchar("❤".to_string()),
