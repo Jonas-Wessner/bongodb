@@ -168,59 +168,6 @@ fn drop_table(con: &mut Connection, table_name: &str) {
     }
 }
 
-fn get_example_rows() -> Vec<Person> {
-    vec![
-        Person {
-            id: 1,
-            name: "James".to_string(),
-            married: true,
-            grade_in_asp: Some(3),
-        },
-        Person {
-            id: 2,
-            name: "Karl".to_string(),
-            married: false,
-            grade_in_asp: None,
-        },
-        Person {
-            id: 3,
-            name: "Sarah".to_string(),
-            married: true,
-            grade_in_asp: None,
-        },
-        Person {
-            id: 4,
-            name: "Jonas".to_string(),
-            married: false,
-            grade_in_asp: Some(1),
-        },
-        Person {
-            id: 5,
-            name: "Simon".to_string(),
-            married: false,
-            grade_in_asp: Some(1),
-        },
-        Person {
-            id: 6,
-            name: "David".to_string(),
-            married: true,
-            grade_in_asp: Some(5),
-        },
-        Person {
-            id: 7,
-            name: "Linda".to_string(),
-            married: true,
-            grade_in_asp: Some(2),
-        },
-        Person {
-            id: 8,
-            name: "Pascal".to_string(),
-            married: true,
-            grade_in_asp: None,
-        },
-    ]
-}
-
 ///
 /// The following tests briefly verify the functionality of the server and clients together (integration test).
 /// It requires that a BongoServer is running on localhost:8080.
@@ -232,8 +179,8 @@ fn get_example_rows() -> Vec<Person> {
 mod tests {
     extern crate core;
 
+    use crate::Person;
     use bongo_lib::connection::Connection;
-    use crate::{get_example_rows, Person};
 
     #[ignore]
     #[test]
@@ -379,7 +326,7 @@ mod tests {
          married BOOLEAN,\
           grade_in_asp INT );"
         ))
-            .unwrap();
+        .unwrap();
 
         println!("OK");
     }
@@ -396,8 +343,61 @@ mod tests {
                 (7, 'Linda', true, 2),\
                 (8, 'Pascal', true, NULL);"
         ))
-            .unwrap();
+        .unwrap();
 
         println!("OK");
+    }
+
+    fn get_example_rows() -> Vec<Person> {
+        vec![
+            Person {
+                id: 1,
+                name: "James".to_string(),
+                married: true,
+                grade_in_asp: Some(3),
+            },
+            Person {
+                id: 2,
+                name: "Karl".to_string(),
+                married: false,
+                grade_in_asp: None,
+            },
+            Person {
+                id: 3,
+                name: "Sarah".to_string(),
+                married: true,
+                grade_in_asp: None,
+            },
+            Person {
+                id: 4,
+                name: "Jonas".to_string(),
+                married: false,
+                grade_in_asp: Some(1),
+            },
+            Person {
+                id: 5,
+                name: "Simon".to_string(),
+                married: false,
+                grade_in_asp: Some(1),
+            },
+            Person {
+                id: 6,
+                name: "David".to_string(),
+                married: true,
+                grade_in_asp: Some(5),
+            },
+            Person {
+                id: 7,
+                name: "Linda".to_string(),
+                married: true,
+                grade_in_asp: Some(2),
+            },
+            Person {
+                id: 8,
+                name: "Pascal".to_string(),
+                married: true,
+                grade_in_asp: None,
+            },
+        ]
     }
 }
