@@ -1,3 +1,5 @@
+use proc_macro::TokenStream;
+use syn::spanned::Spanned;
 use syn::Lit::Str;
 use syn::{Attribute, Field, Meta, NestedMeta};
 
@@ -18,26 +20,45 @@ pub fn get_fields_with_attribute(attribute_name: &str, named_fields: &[Field]) -
         .collect::<Vec<Field>>()
 }
 
-pub fn extract_table_string_from_attributes(attrs: &[Attribute]) -> Option<String> {
+pub fn extract_table_string_from_attributes(
+    attrs: &[Attribute],
+) -> Result<Option<String>, TokenStream> {
     if !attrs.is_empty() {
-        match attrs[0].parse_meta().unwrap_or_else(|_| {
-            panic!("Could not parse attribute TableName to meta.");
-        }) {
-            Meta::List(l) => match l.nested.first().unwrap_or_else(|| {
-                panic!("You have to pass a name to the TableName attribute.");
-            }) {
-                NestedMeta::Lit(Str(s)) => Some(s.value()),
-                _ => {
-                    panic!("The name passed to the TableName attribute must be a String.");
-                }
-            },
-            _ => {
-                panic!(
-                    "Failed to parse TableName attribute input. Example: #[TableName(\"name\")]"
-                );
+        match match attrs[0].parse_meta() {
+            Ok(meta) => meta,
+            Err(err) => {
+                return Err(syn::Error::new(attrs[0].tokens.span(), err.to_string())
+                    .to_compile_error()
+                    .into())
             }
+        } {
+            Meta::List(l) => match match l.nested.first() {
+                Some(meta) => meta,
+                None => {
+                    return Err(syn::Error::new(
+                        attrs[0].tokens.span(),
+                        "You have to pass a name to the TableName attribute.",
+                    )
+                    .to_compile_error()
+                    .into())
+                }
+            } {
+                NestedMeta::Lit(Str(s)) => Ok(Some(s.value())),
+                _ => Err(syn::Error::new(
+                    attrs[0].tokens.span(),
+                    "The name passed to the TableName attribute must be a String.",
+                )
+                .to_compile_error()
+                .into()),
+            },
+            _ => Err(syn::Error::new(
+                attrs[0].tokens.span(),
+                "Failed to parse TableName attribute input. Example: #[TableName(\"name\")]",
+            )
+            .to_compile_error()
+            .into()),
         }
     } else {
-        None
+        Ok(None)
     }
 }

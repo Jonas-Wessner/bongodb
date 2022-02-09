@@ -4,26 +4,58 @@ use crate::helpers::attribute_helper::{
 use crate::helpers::fields_helper::{extract_data_from_fields, type_is_option};
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::spanned::Spanned;
+use syn::Data::{Enum, Struct, Union};
+use syn::Fields::{Named, Unit, Unnamed};
 use syn::{DeriveInput, Field};
 
 pub fn select_primary(input: DeriveInput) -> TokenStream {
     let struct_ident = input.ident;
-    let table_name = match extract_table_string_from_attributes(&input.attrs) {
+    let table_name = match match extract_table_string_from_attributes(&input.attrs) {
+        Ok(opt) => opt,
+        Err(ts) => return ts,
+    } {
         None => struct_ident.to_string(),
         Some(s) => s,
     };
 
-    let fields = if let syn::Data::Struct(d) = input.data {
-        d
-    } else {
-        panic!("Select derive macro is only supported for structs")
+    let fields = match input.data {
+        Struct(d) => d,
+        Enum(d) => {
+            return syn::Error::new(
+                d.enum_token.span,
+                "FromRow derive macro is only supported for structs",
+            )
+            .to_compile_error()
+            .into();
+        }
+        Union(d) => {
+            return syn::Error::new(
+                d.union_token.span,
+                "FromRow derive macro is only supported for structs",
+            )
+            .to_compile_error()
+            .into();
+        }
     }
     .fields;
 
-    let named_fields = if let syn::Fields::Named(f) = fields {
-        f
-    } else {
-        panic!("Select derive macro is only supported for named fields")
+    let named_fields = match fields {
+        Named(f) => f,
+        Unnamed(fields) => {
+            return syn::Error::new(
+                fields.paren_token.span,
+                "FromRow derive macro is only supported for structs",
+            )
+            .to_compile_error()
+            .into();
+        }
+        Unit => {
+            return quote! {
+                compile_error!("FromRow derive macro is only supported for named fields");
+            }
+            .into();
+        }
     }
     .named
     .into_iter()
@@ -36,13 +68,24 @@ pub fn select_primary(input: DeriveInput) -> TokenStream {
         get_fields_with_attribute("PrimaryKey", &named_fields);
 
     if named_fields_primary_key_attr.len() != 1 {
-        panic!("There must be excatly one field with the PrimaryKey attribute");
+        return quote! {
+            compile_error!("There must be excatly one field with the PrimaryKey attribute");
+        }
+        .into();
     }
 
     let primary_type = named_fields_primary_key_attr.first().unwrap().ty.to_owned();
 
-    if type_is_option(&primary_type) {
-        panic!("The field marked with PrimaryKey must not be an Option.")
+    if match type_is_option(&primary_type) {
+        Ok(b) => b,
+        Err(ts) => return ts,
+    } {
+        return syn::Error::new(
+            primary_type.span(),
+            "FromRow derive macro is only supported for structs",
+        )
+        .to_compile_error()
+        .into();
     }
 
     let (field_idents, _) = extract_data_from_fields(&named_fields, &named_fields_persistent_attr);

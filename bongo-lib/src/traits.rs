@@ -1,4 +1,5 @@
-pub use bongo_core::types::Row;
+use bongo_core::types::BongoError;
+use bongo_core::types::Row;
 
 pub trait SelectPrimaryQuery<T> {
     fn select_primary_query(primary: T) -> String;
@@ -19,12 +20,31 @@ pub trait InsertQuery {
     fn insert_query_values(&self) -> String;
 }
 
-pub trait FromRow {
-    fn from_row(row: Row) -> Self;
+impl<T> InsertQuery for &[T]
+where
+    T: InsertQuery,
+{
+    fn insert_query_head() -> String {
+        T::insert_query_head()
+    }
+
+    fn insert_query_values(&self) -> String {
+        let mut query = String::new();
+
+        for type_to_insert in self.iter() {
+            query.push_str(format!("{}, ", type_to_insert.insert_query_values()).as_str());
+        }
+
+        query[..query.len() - 2].to_string()
+    }
 }
 
-impl FromRow for Row {
-    fn from_row(row: Row) -> Self {
-        row
+pub trait FromRow<T> {
+    fn from_row(row: Row) -> Result<T, BongoError>;
+}
+
+impl FromRow<Row> for Row {
+    fn from_row(row: Row) -> Result<Row, BongoError> {
+        Ok(row)
     }
 }
