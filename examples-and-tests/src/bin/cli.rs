@@ -13,7 +13,8 @@
 ///
 use std::fmt::Debug;
 use std::io;
-use bongo_lib::connection::{Connection};
+
+use bongo_lib::connection::Connection;
 use bongo_lib::derives::{FromRow, Insert};
 use bongo_lib::traits::FromRow;
 use bongo_lib::types::Row;
@@ -41,8 +42,8 @@ fn main() -> io::Result<()> {
         match input.as_str() {
             "1" => create_example_table(&mut con, "Person"),
             "2" => insert_example_rows(&mut con, "Person"),
-            "3" => { select_all::<Row>(&mut con, "Person") }
-            "4" => { select_all::<Person>(&mut con, "Person") }
+            "3" => select_all::<Row>(&mut con, "Person"),
+            "4" => select_all::<Person>(&mut con, "Person"),
             "5" => {
                 println!("Enter Query in one line.");
 
@@ -61,9 +62,8 @@ fn main() -> io::Result<()> {
             }
             "7" => drop_table(&mut con, "Person"),
             "x" => break,
-            _ => println!("Invalid input.")
+            _ => println!("Invalid input."),
         }
-
 
         println!()
     }
@@ -114,7 +114,7 @@ fn insert_example_rows(con: &mut Connection, table_name: &str) {
     execute_sql(con, &sql);
 }
 
-fn select_all<T: FromRow + Debug>(con: &mut Connection, table_name: &str) {
+fn select_all<T: FromRow<T> + Debug>(con: &mut Connection, table_name: &str) {
     let sql = format!(
         "SELECT * FROM {table_name} \
          ORDER BY id ASC;"
@@ -126,14 +126,20 @@ fn select_all<T: FromRow + Debug>(con: &mut Connection, table_name: &str) {
                 println!("{:?}", row);
             }
         }
-        Err(err) => { println!("An error occurred:\n{:?}", err) }
+        Err(err) => {
+            println!("An error occurred:\n{:?}", err)
+        }
     }
 }
 
 fn execute_sql(con: &mut Connection, sql: &str) {
     match con.execute(sql) {
-        Ok(_) => { println!("OK") }
-        Err(err) => { println!("An error occurred:\n{:?}", err) }
+        Ok(_) => {
+            println!("OK")
+        }
+        Err(err) => {
+            println!("An error occurred:\n{:?}", err)
+        }
     }
 }
 
@@ -144,15 +150,21 @@ fn query(con: &mut Connection, sql: &str) {
                 println!("{:?}", row);
             }
         }
-        Err(err) => { println!("An error occurred:\n{:?}", err) }
+        Err(err) => {
+            println!("An error occurred:\n{:?}", err)
+        }
     }
 }
 
 fn drop_table(con: &mut Connection, table_name: &str) {
     let sql = format!("DROP TABLE {table_name};");
     match con.execute(&sql) {
-        Ok(_) => { println!("OK") }
-        Err(err) => { println!("An error occurred:\n{:?}", err) }
+        Ok(_) => {
+            println!("OK")
+        }
+        Err(err) => {
+            println!("An error occurred:\n{:?}", err)
+        }
     }
 }
 
@@ -209,7 +221,6 @@ fn get_example_rows() -> Vec<Person> {
     ]
 }
 
-
 ///
 /// The following tests briefly verify the functionality of the server and clients together (integration test).
 /// It requires that a BongoServer is running on localhost:8080.
@@ -222,8 +233,6 @@ mod tests {
     extern crate core;
 
     use bongo_lib::connection::Connection;
-    use bongo_lib::derives::{FromRow};
-    use bongo_lib::types::Row;
     use crate::{get_example_rows, Person};
 
     #[ignore]
@@ -262,8 +271,8 @@ mod tests {
         let expected = get_example_rows()
             .into_iter()
             .enumerate()
-            .filter(|(i, p)| p.id == 3 || !p.married)
-            .map(|(i, p)| p)
+            .filter(|(_, p)| p.id == 3 || !p.married)
+            .map(|(_, p)| p)
             .collect::<Vec<Person>>();
 
         // note  that selection order is non-deterministic if no order by is specified due to usage of hash index
@@ -369,7 +378,8 @@ mod tests {
         ( id INT, name VARCHAR(255),\
          married BOOLEAN,\
           grade_in_asp INT );"
-        )).unwrap();
+        ))
+            .unwrap();
 
         println!("OK");
     }

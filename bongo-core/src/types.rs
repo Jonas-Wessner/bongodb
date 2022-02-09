@@ -75,10 +75,6 @@ pub enum BongoLiteral {
     Null,
 }
 
-pub trait FromBongoLiteral {
-    fn from_bongo_literal(literal: BongoLiteral) -> Self;
-}
-
 impl BongoLiteral {
     ///
     /// Converts a `BongoLiteral` to a boolean value if possible.
@@ -212,62 +208,80 @@ impl<D: AsRef<BongoDataType>> FromDiscBytes<D> for BongoLiteral {
     }
 }
 
-impl FromBongoLiteral for i64 {
-    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+impl TryFrom<BongoLiteral> for i64 {
+    type Error = BongoError;
+    fn try_from(literal: BongoLiteral) -> Result<Self, Self::Error> {
         if let BongoLiteral::Int(v) = literal {
-            v
+            Ok(v)
         } else {
-            panic!("Could not convert BongoLiteral to i64");
+            Err(BongoError::InternalError(
+                "Could not convert BongoLiteral to i64".to_string(),
+            ))
         }
     }
 }
 
-impl FromBongoLiteral for String {
-    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+impl TryFrom<BongoLiteral> for String {
+    type Error = BongoError;
+    fn try_from(literal: BongoLiteral) -> Result<Self, Self::Error> {
         if let BongoLiteral::Varchar(v) = literal {
-            v
+            Ok(v)
         } else {
-            panic!("Could not convert BongoLiteral to String");
+            Err(BongoError::InternalError(
+                "Could not convert BongoLiteral to String".to_string(),
+            ))
         }
     }
 }
 
-impl FromBongoLiteral for bool {
-    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+impl TryFrom<BongoLiteral> for bool {
+    type Error = BongoError;
+    fn try_from(literal: BongoLiteral) -> Result<Self, Self::Error> {
         if let BongoLiteral::Bool(v) = literal {
-            v
+            Ok(v)
         } else {
-            panic!("Could not convert BongoLiteral to bool");
+            Err(BongoError::InternalError(
+                "Could not convert BongoLiteral to bool".to_string(),
+            ))
         }
     }
 }
 
-impl FromBongoLiteral for Option<i64> {
-    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+impl TryFrom<BongoLiteral> for Option<i64> {
+    type Error = BongoError;
+    fn try_from(literal: BongoLiteral) -> Result<Self, Self::Error> {
         match literal {
-            BongoLiteral::Int(i) => Some(i),
-            BongoLiteral::Null => None,
-            _ => panic!("Could not convert BongoLiteral to i64"),
+            BongoLiteral::Int(v) => Ok(Some(v)),
+            BongoLiteral::Null => Ok(None),
+            _ => Err(BongoError::InternalError(
+                "Could not convert BongoLiteral to Option<i64>".to_string(),
+            )),
         }
     }
 }
 
-impl FromBongoLiteral for Option<bool> {
-    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+impl TryFrom<BongoLiteral> for Option<String> {
+    type Error = BongoError;
+    fn try_from(literal: BongoLiteral) -> Result<Self, Self::Error> {
         match literal {
-            BongoLiteral::Bool(b) => Some(b),
-            BongoLiteral::Null => None,
-            _ => panic!("Could not convert BongoLiteral to i64"),
+            BongoLiteral::Varchar(v) => Ok(Some(v)),
+            BongoLiteral::Null => Ok(None),
+            _ => Err(BongoError::InternalError(
+                "Could not convert BongoLiteral to Option<String>".to_string(),
+            )),
         }
     }
 }
 
-impl FromBongoLiteral for Option<String> {
-    fn from_bongo_literal(literal: BongoLiteral) -> Self {
+impl TryFrom<BongoLiteral> for Option<bool> {
+    type Error = BongoError;
+    fn try_from(literal: BongoLiteral) -> Result<Self, Self::Error> {
         match literal {
-            BongoLiteral::Varchar(s) => Some(s),
-            BongoLiteral::Null => None,
-            _ => panic!("Could not convert BongoLiteral to i64"),
+            BongoLiteral::Bool(v) => Ok(Some(v)),
+            BongoLiteral::Null => Ok(None),
+            _ => Err(BongoError::InternalError(
+                "Could not convert BongoLiteral to Option<bool>".to_string(),
+            )),
         }
     }
 }

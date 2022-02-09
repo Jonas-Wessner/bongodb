@@ -276,6 +276,8 @@ impl Executor {
         result
     }
 
+    // TODO: flush has a concurrency related bug that shows up in the tests of ../examples-and-tests-cli
+    //  The issue comes only up if all tests are ran in parallel and the server is running on auto_flush.
     ///
     /// A `Flush` statement is executed as follows.
     ///
