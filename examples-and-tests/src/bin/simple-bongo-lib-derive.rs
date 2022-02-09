@@ -45,6 +45,7 @@ fn main() {
     // Alternatively we could also query as a `Row` or as a `Person`
     #[derive(Debug, Select, FromRow)]
     #[TableName("Person")]
+    #[allow(dead_code)] // this is never read in our example, but only printed with dbg! we do not want that warning.
     struct PersonQuery {
         name: String,
         married: bool,
