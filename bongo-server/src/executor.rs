@@ -113,7 +113,7 @@ pub struct Executor {
     ///         SELECT
     /// - A write lock on this means that we have mutable access to exactly ONE table and that no other thread
     ///     currently has access to this table in any way.
-    ///     The execution of the following statements requires acquiring a write lock on the second level:
+    ///     The execut  ion of the following statements requires acquiring a write lock on the second level:
     ///         INSERT, UPDATE, DELETE
     ///
     /// Lets compare this to using a single RwLock system:
@@ -904,7 +904,9 @@ impl Executor {
 ///
 /// An expression that can trivially indexed.
 ///
-
+/// The definition of trivial is here that the expression must be a binary expression where one of the
+/// operands is the indexable, the other operand is a literal and the operator is Eq or NotEq.
+///
 struct TrivialIdxExpr {
     ///
     /// The column to be indexed.
@@ -938,74 +940,6 @@ impl TryFrom<&BinOp> for IndexBinOp {
     }
 }
 
-struct DiscIndexer {
-    pub indices: Vec<u64>,
-    ///
-    /// Concrete row indexes are already known due to use of index.
-    /// Because `TrivialIdxExpr` only supports non-nested expressions, we can calculate row indices
-    /// from the `TrivialIdxExpr` and know that all those row indices will match the condition.
-    /// Therefore, In the indexable cases there is no expression to be applied
-    ///
-    pub expr: Option<Expr>,
-}
-
-impl DiscIndexer {
-    ///
-    /// Returns all rows indices that are applicable after potentially having applied the index and
-    /// the expression left to apply to all those indices. In case the index could already be used the
-    /// expression is None, and no linear search is needed anymore. In case the index could not be used
-    /// all indices are returned as a linear search is needed along with the expression which must be
-    /// checked for each of the indices.
-    ///
-    pub fn from_opt_expr(idx: &(String, HashMap<BongoLiteral, Vec<u64>>), opt_expr: Option<Expr>) -> Self {
-        let (name, map) = idx;
-
-        match opt_expr {
-            None => {
-                // not indexable and no condition -> all indices that are in map + None
-                Self {
-                    indices: Self::idx_to_indices(map.clone()),
-                    expr: None,
-                }
-            }
-            Some(expr) => {
-                match TrivialIdxExpr::try_from((name.as_str(), &expr)) {
-                    Ok(idx_expr) => {
-                        match idx_expr.op {
-                            IndexBinOp::Eq => {
-                                // indexable with Eq operator -> return the contents of the index at that position + None
-                                // because condition is always true for all values at the those indices
-                                match map.get(&idx_expr.val) {
-                                    None => Self { indices: vec![], expr: None },
-                                    Some(indices) => Self { indices: indices.clone(), expr: None }
-                                }
-                            }
-                            IndexBinOp::NotEq => {
-                                // indexable with NotEq operator -> return all indexes but the ones that match the index
-                                // and none, because expr is true for all values at those indices
-                                let mut idx = map.clone();
-                                idx.remove(&idx_expr.val);
-                                Self { indices: Self::idx_to_indices(idx), expr: None }
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        // not indexable -> all indices in map + Some(expression)
-                        // because the expression must still be evaluated for each value
-                        Self { indices: Self::idx_to_indices(map.clone()), expr: Some(expr) }
-                    }
-                }
-            }
-        }
-    }
-
-    fn idx_to_indices(idx: HashMap<BongoLiteral, Vec<u64>>) -> Vec<u64> {
-        idx.into_iter()
-            .map(|(_lit, indices)| { indices })
-            .collect::<Vec<Vec<u64>>>()
-            .concat()
-    }
-}
 
 impl TryFrom<(&str, &Expr)> for TrivialIdxExpr {
     type Error = ();
@@ -1083,6 +1017,75 @@ impl TryFrom<(&str, &Expr)> for TrivialIdxExpr {
             // not trivially indexable, requires recursive analysing
             _ => Err(())
         }
+    }
+}
+
+struct DiscIndexer {
+    pub indices: Vec<u64>,
+    ///
+    /// Concrete row indexes are already known due to use of index.
+    /// Because `TrivialIdxExpr` only supports non-nested expressions, we can calculate row indices
+    /// from the `TrivialIdxExpr` and know that all those row indices will match the condition.
+    /// Therefore, In the indexable cases there is no expression to be applied
+    ///
+    pub expr: Option<Expr>,
+}
+
+impl DiscIndexer {
+    ///
+    /// Returns all rows indices that are applicable after potentially having applied the index and
+    /// the expression left to apply to all those indices. In case the index could already be used the
+    /// expression is None, and no linear search is needed anymore. In case the index could not be used
+    /// all indices are returned as a linear search is needed along with the expression which must be
+    /// checked for each of the indices.
+    ///
+    pub fn from_opt_expr(idx: &(String, HashMap<BongoLiteral, Vec<u64>>), opt_expr: Option<Expr>) -> Self {
+        let (name, map) = idx;
+
+        match opt_expr {
+            None => {
+                // not indexable and no condition -> all indices that are in map + None
+                Self {
+                    indices: Self::idx_to_indices(map.clone()),
+                    expr: None,
+                }
+            }
+            Some(expr) => {
+                match TrivialIdxExpr::try_from((name.as_str(), &expr)) {
+                    Ok(idx_expr) => {
+                        match idx_expr.op {
+                            IndexBinOp::Eq => {
+                                // indexable with Eq operator -> return the contents of the index at that position + None
+                                // because condition is always true for all values at the those indices
+                                match map.get(&idx_expr.val) {
+                                    None => Self { indices: vec![], expr: None },
+                                    Some(indices) => Self { indices: indices.clone(), expr: None }
+                                }
+                            }
+                            IndexBinOp::NotEq => {
+                                // indexable with NotEq operator -> return all indexes but the ones that match the index
+                                // and none, because expr is true for all values at those indices
+                                let mut idx = map.clone();
+                                idx.remove(&idx_expr.val);
+                                Self { indices: Self::idx_to_indices(idx), expr: None }
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // not indexable -> all indices in map + Some(expression)
+                        // because the expression must still be evaluated for each value
+                        Self { indices: Self::idx_to_indices(map.clone()), expr: Some(expr) }
+                    }
+                }
+            }
+        }
+    }
+
+    fn idx_to_indices(idx: HashMap<BongoLiteral, Vec<u64>>) -> Vec<u64> {
+        idx.into_iter()
+            .map(|(_lit, indices)| { indices })
+            .collect::<Vec<Vec<u64>>>()
+            .concat()
     }
 }
 

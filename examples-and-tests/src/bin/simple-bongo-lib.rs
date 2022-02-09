@@ -1,15 +1,6 @@
 use bongo_lib::connection::Connection;
 use bongo_lib::types::Row;
 
-#[derive(Debug)]
-#[allow(dead_code)] // fields are only used in tests, which shall not cause warnings
-struct Person {
-    id: i64,
-    name: String,
-    married: bool,
-    grade_in_asp: Option<i64>,
-}
-
 fn main() {
     // connect to a locally running BongoDB server. Make sure you have started one
     let mut conn = Connection::connect("localhost:8080").unwrap();
