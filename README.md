@@ -3,27 +3,36 @@
 **BongoDB** is an SQL database written in rust.  
 We also provide the client library **bongo-lib** which takes care of connecting to the server, conveniently executing queries from a rust program and mapping DB-entries to structs.  
 Here you will find a quick guide on how to test out the most basic features.  
-*If you would like to dive deeper in, **please check out our [Wiki](https://code.fbi.h-da.de/advanced-systems-programming-ws21/y1/bongodb/-/wikis/home).***
+*If you would like to dive deeper in, **please check out our [Wiki](./docs/Home.md).***
 
 ## Getting the code
+
 Install the rust nightly build channel if you have not already:
+
 ```bash
 rustup install nightly
-``` 
+```
+
 Clone the repository first:
+
 ```bash
 git clone git@code.fbi.h-da.de:advanced-systems-programming-ws21/y1/bongodb.git
-``` 
+```
+
 Verify everything works by running the tests:
+
 ```bash
 make test-all
 ```
+
 NOTE: you may run the test manually if you do not have make installed.
 
 ## Run the BongoDB server locally
+
 ```bash
 cargo +nightly run --manifest-path bongo-server/Cargo.toml
-``` 
+```
+
 This will start the server with default configuration. If you would like to change that take the server library and use it in your own executable.
 
 ## Write a simple client program using bongo-lib
@@ -62,9 +71,10 @@ fn main() {
     // disconnecting from the BongoDB server automatically as soon as `conn` gets out of scope.
 }
 ```
+
 The full example can be found [here](./examples-and-tests/src/bin/simple-bongo-lib.rs).
 Alternatively you can achieve the same by using derive macros. You will have to enable them in the Cargo.toml file.
-`bongo-lib = {path = "../bongo-lib", features=["derive"]}`
+ `bongo-lib = {path = "../bongo-lib", features=["derive"]}`
 
 ```rust
 #[derive(Debug, FromRow, Select, CreateDropTable, Insert)]
@@ -124,6 +134,5 @@ fn main() {
     // disconnecting from the BongoDB server automatically as soon as `conn` gets out of scope.
 }
 ```
+
 The full example can be found [here](./examples-and-tests/src/bin/simple-bongo-lib-derive.rs).
-
-
