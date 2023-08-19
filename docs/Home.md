@@ -8,7 +8,3 @@ We also provide the client library **bongo-lib** which takes care of connecting 
 * [System Architecture](./SystemArchitecture.md)
 * [Features of BongoDB](./FeaturesOfBongoDB.md)
 * [Client Library](./ClientLibrary.md)
-
-### Contributions
-
-The individual contributions of developers can be comprehended by looking at the individual issues and the corresponding assignees and merge requests.
